@@ -118,6 +118,9 @@ UA, the paid lane preserves tools, and the free lane rejects non-chat routes.
   instead of sending an unsupported route.
 - The paid provider keeps the honest `nodecode-magpie/0.1.0` UA; only the free
   provider uses the `nodecode_cli/…` shape, because only the free gate needs it.
+- Known magpie 0.1.3240 limitation: plugin-model `tool_call` is not carried into
+  the gateway model list, so `nodecode-free` may still appear tool-capable in
+  some UIs. The plugin strips tools server-side, so the vendor never sees them.
 - The plugin is a plain ESM package run by magpie's Bun host. It uses only
   `node:fs`, `node:os`, `node:path`, and the global `fetch`; the host's global
   fetch wrapper applies the configured proxy and strips `X-Magpie-*` headers.

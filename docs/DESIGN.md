@@ -212,6 +212,7 @@ rm -rf "$SB"
 6. **宿主版本敏感**：升级 magpie 后重跑 `npm test` 与两个 `provider test`。
 7. **费用显示**：付费模型不写 `cost`，避免标成 $0；如需费用估算要补价格表。
 8. **模型面**：只声明 `nodecode-cyber-v1`；`nodecode-decide-v1` 是分类模型、`nodecode-image-v1` 是图像生成，默认不暴露。
+9. **模型能力显示**：magpie 0.1.3240 的 Go gateway 模型结构没有 `toolcall` 字段，插件模型的 `tool_call:false` 不会出现在 `/v1/models`；免费档在 UI/网关上可能仍显示支持工具，但 `makeFetch` 会删除 tools，供应商不会收到。
 
 ## 7. 发布清单
 
