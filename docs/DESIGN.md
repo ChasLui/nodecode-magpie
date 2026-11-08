@@ -289,7 +289,7 @@ rm -rf "$SB"
 ## 8. 发布清单
 
 - [x] 确认厂商条款与账号风险，决定是否发布免费档（个人实验用途）
-- [x] 真实 magpie 安装 0.1.0（npm）并在 2026-11-08 升级到 0.1.1（`github:ChasLui/nodecode-magpie#v0.1.1`），两个 provider 可见并已登录
+- [x] 真实 magpie 安装 `npm:nodecode-magpie@0.1.1`（2026-11-08，从 0.1.0 升级），两个 provider 可见并已登录
 - [x] 真实 magpie 网关跑“免费纯聊天”与“付费工具调用”
 - [x] 免费档 transcript bridge：多轮、工具调用、tool result、流式全部真实通过
 - [x] Magpie GUI 供应商详情确认两个 provider、key、并发与模型均正确
