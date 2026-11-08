@@ -4,10 +4,13 @@ import test from "node:test"
 import {
   EVAL_TOOL,
   LISP_PREFIX,
+  evalFormFromArguments,
   handleEvalRequest,
   makeEvalRequest,
+  messageCalls,
   parseMagpieToolForm,
   splitEvalCalls,
+  transformEvalResponse,
 } from "../lib/free-eval.mjs"
 import { makeFetch } from "../lib/nodecode.mjs"
 
@@ -295,4 +298,51 @@ test("makeFetch uses the eval bridge for free requests with tools", async () => 
   assert.equal(seen[0].tools.length, 1)
   assert.equal(seen[0].tools[0].function.name, "eval")
   assert.match(seen[0].messages[0].content, /^You are a living Common Lisp image/)
+})
+
+test("messageCalls recovers an eval call written as text", () => {
+  const message = {
+    role: "assistant",
+    content:
+      '<tool_call>\n{"name":"eval","arguments":{"cmd":"printf \'x\' > /tmp/a.txt"}}\n</tool_call>',
+  }
+  const calls = messageCalls(message, [{ name: "read_file" }])
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].function.name, "eval")
+})
+
+test("evalFormFromArguments accepts shell aliases and wraps them in (sh ...)", () => {
+  for (const key of ["cmd", "command", "shell"]) {
+    const parsed = evalFormFromArguments({ [key]: "echo hi" })
+    assert.ok(parsed, key)
+    assert.equal(parsed.form, '(sh "echo hi")')
+  }
+  assert.equal(evalFormFromArguments({ form: "(+ 1 2)" }).form, "(+ 1 2)")
+  assert.equal(evalFormFromArguments({ code: "(+ 1 2)" }).form, "(+ 1 2)")
+  assert.equal(evalFormFromArguments({}), null)
+})
+
+test("evalFormFromArguments escapes quotes and backslashes in shell text", () => {
+  const parsed = evalFormFromArguments({ cmd: 'echo "a\\b"' })
+  assert.equal(parsed.form, '(sh "echo \\"a\\\\b\\"")')
+})
+
+test("transformEvalResponse turns a text eval call into a native eval call", () => {
+  const data = {
+    choices: [
+      {
+        index: 0,
+        message: {
+          role: "assistant",
+          content: '<tool_call>{"name":"eval","arguments":{"form":"(sh \\"ls\\")"}}</tool_call>',
+        },
+        finish_reason: "stop",
+      },
+    ],
+  }
+  const out = transformEvalResponse(data, { tools: [{ name: "read_file" }] })
+  const calls = out.choices[0].message.tool_calls
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].function.name, "eval")
+  assert.equal(out.choices[0].finish_reason, "tool_calls")
 })
