@@ -218,7 +218,7 @@ rm -rf "$SB"
 ## 7. 发布清单
 
 - [ ] 确认厂商条款与账号风险，决定是否发布免费档
-- [x] 真实 magpie 安装（CLI），两个 provider 可见并已登录
+- [x] 真实 magpie 安装（CLI，`npm:nodecode-magpie@0.1.0`），两个 provider 可见并已登录
 - [x] 真实 magpie 网关跑“免费纯聊天”与“付费工具调用”
 - [ ] 加 `magpie.icon`（可选）
 - [x] npm 发布 `nodecode-magpie@0.1.0`（2026-11-08，GitHub Actions run `42451605190`；带 provenance；`npm:nodecode-magpie@0.1.0` 在隔离 sandbox 安装并通过双 provider 实测）
