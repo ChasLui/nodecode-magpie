@@ -220,5 +220,5 @@ rm -rf "$SB"
 - [x] 真实 magpie 安装（CLI），两个 provider 可见并已登录
 - [x] 真实 magpie 网关跑“免费纯聊天”与“付费工具调用”
 - [ ] 加 `magpie.icon`（可选）
-- [ ] npm 包名 `nodecode-magpie` 是否可用
+- [x] npm 包名 `nodecode-magpie` 可用（2026-11-08 `npm view` 返回 404，未被占用；本机未登录 npm）
 - [ ] magpie 升级后重跑 smoke test
