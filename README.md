@@ -44,7 +44,7 @@ From npm / git once published:
 
 ```sh
 magpie plugins add nodecode-magpie
-magpie plugins add github:ChasLui/nodecode-magpie
+magpie plugins add github:ChasLui/nodecode-magpie#v0.1.0
 ```
 
 `magpie plugins add` restarts the plugin host. Local-path plugins are loaded in place,
