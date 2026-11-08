@@ -194,6 +194,14 @@ rm -rf "$SB"
 
 2026-11-08 实测：free `✓ chat ~2.6 s`、paid `~1.9 s`（另一轮 1.3 s / 1.2 s）；free 带 tools 直接经 `makeFetch` 改写后 200。
 
+### 5.3 真实 magpie 网关（agent 链路）
+
+2026-11-08 在本机运行中的 magpie gateway（`127.0.0.1:3425`）实测：
+
+- `nodecode-free/nodecode-cyber-v1` 普通 chat → HTTP 200，返回 `GATEWAY_OK`
+- `nodecode-free/nodecode-cyber-v1` 带 `tools` → HTTP 200，响应无 `tool_calls`（插件已删掉 tools，免费门禁通过）
+- `nodecode/nodecode-cyber-v1` 带 `tools` → HTTP 200，`finish_reason: "tool_calls"`，正确返回 `read_file` 工具调用
+
 ## 6. 风险与边界
 
 1. **厂商条款/封号风险（最重要）**：免费 key 文档要求只从 NodeCode CLI 使用；插件伪装 CLI UA 是规避客户端限制。不要把它当长期稳定方案。免费档只适合个人实验、纯聊天/摘要；编码 agent 请用付费档。
@@ -209,7 +217,7 @@ rm -rf "$SB"
 
 - [ ] 确认厂商条款与账号风险，决定是否发布免费档
 - [x] 真实 magpie 安装（CLI），两个 provider 可见并已登录
-- [ ] 真实 agent 跑“免费纯聊天”与“付费工具调用”
+- [x] 真实 magpie 网关跑“免费纯聊天”与“付费工具调用”
 - [ ] 加 `magpie.icon`（可选）
 - [ ] npm 包名 `nodecode-magpie` 是否可用
 - [ ] magpie 升级后重跑 smoke test
