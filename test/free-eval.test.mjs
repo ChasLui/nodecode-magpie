@@ -13,6 +13,7 @@ import {
   transformEvalResponse,
 } from "../lib/free-eval.mjs"
 import { makeFetch } from "../lib/nodecode.mjs"
+import { runEvalForm } from "../lib/eval-runner.mjs"
 
 const readFile = {
   type: "function",
@@ -345,4 +346,65 @@ test("transformEvalResponse turns a text eval call into a native eval call", () 
   assert.equal(calls.length, 1)
   assert.equal(calls[0].function.name, "eval")
   assert.equal(out.choices[0].finish_reason, "tool_calls")
+})
+
+test("handleEvalRequest executes a text eval call and continues the loop", async () => {
+  const seen = []
+  const responses = [
+    {
+      choices: [
+        {
+          index: 0,
+          message: {
+            role: "assistant",
+            content:
+              '<tool_call>{"name":"eval","arguments":{"cmd":"printf step-one > /tmp/x.txt"}}</tool_call>',
+          },
+          finish_reason: "stop",
+        },
+      ],
+    },
+    {
+      choices: [
+        { index: 0, message: { role: "assistant", content: "The file contains step-one." }, finish_reason: "stop" },
+      ],
+    },
+  ]
+  const fetchImpl = async () => {
+    const data = responses.shift()
+    return new Response(JSON.stringify(data), { status: 200, headers: { "content-type": "application/json" } })
+  }
+  const evalRunner = async (form) => {
+    seen.push(form)
+    return "ok"
+  }
+  const plan = makeEvalRequest({ messages: [{ role: "user", content: "create the file" }], tools: [readFile] }, [
+    { name: "read_file" },
+  ])
+  const response = await handleEvalRequest({
+    input: "https://api.nodecode.ai/v1/chat/completions",
+    init: { method: "POST" },
+    headers: new Headers({ "content-type": "application/json" }),
+    body: plan.body,
+    plan,
+    fetchImpl,
+    evalRunner,
+  })
+  const data = await response.json()
+  assert.deepEqual(seen, ['(sh "printf step-one > /tmp/x.txt")'])
+  assert.equal(data.choices[0].message.content, "The file contains step-one.")
+})
+
+test("runEvalForm does not replay a timed-out form in a second process", async () => {
+  let oneShotCalls = 0
+  const form = "(sh \"sleep 5\")"
+  // Simulate the persistent server timing out; the one-shot path must not run.
+  const result = await runEvalForm(form, {
+    persistent: true,
+    timeoutMs: 1_000,
+    server: true,
+    env: { ...process.env, NODECODE_BIN: "/nonexistent/nodecode" },
+  }).catch((error) => `THREW: ${error.message}`)
+  assert.match(String(result), /ERROR|THREW/)
+  assert.equal(oneShotCalls, 0)
 })
