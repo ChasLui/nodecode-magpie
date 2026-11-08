@@ -94,6 +94,11 @@ magpie quota nodecode-free --json
 magpie quota nodecode --json
 ```
 
+> Note: in some magpie CLI versions (including 0.1.3240 as tested on 2026-11-08),
+> `magpie quota` may print `not configured` for plugin providers even though the
+> plugin implements `auth.usage`. Chat and tools are unaffected; use the gateway
+> endpoint `GET /v1/magpie/quotas` or NodeCode's `GET /v1/usage` for an exact reading.
+
 A real test against the vendor with both keys passed on 2026-11-08:
 
 ```

@@ -308,7 +308,7 @@ rm -rf "$SB"
 - 免费 stream + tools → HTTP 200，`text/event-stream`，含 `tool_calls` delta 与 `[DONE]`
 - `nodecode/nodecode-cyber-v1` 带 tools → HTTP 200，原生 `tool_calls` 正常
 
-同日在本机真实 magpie gateway（`127.0.0.1:3425`，已安装 0.1.1）复测：
+同日在本机真实 magpie gateway（`127.0.0.1:3425`，0.1.1）复测：
 
 - 免费多轮 → 200，`Your name is Chao.`
 - 免费 `read_file` 工具调用 → 200，`finish_reason:"tool_calls"`，arguments `{"path":"/tmp/nc_free_tool_probe.txt"}`
@@ -316,6 +316,15 @@ rm -rf "$SB"
 - 免费 stream + tools → 200，`text/event-stream`，`tool_calls` delta 正常
 - 付费 tools → 200，原生 `tool_calls` 正常
 - `magpie provider test nodecode-free` → `✓ chat 1003 ms · nodecode-cyber-v1`；`nodecode` → `✓ chat 2248 ms · nodecode-cyber-v1`（首次 free 有一次 10s 超时，重试即通过）
+
+2026-11-08 升级到 `npm:nodecode-magpie@0.2.0` 后，再在本机真实 gateway `127.0.0.1:3425` 复测：
+
+- 免费 `read_file` client tool → 200，`finish_reason:"tool_calls"`，arguments `{"path":"/tmp/nc-real020-file.txt"}`
+- 免费直接 eval（要求 `(sh "echo real-020-eval-ok")`）→ 200，最终内容 `real-020-eval-ok`，证明 0.2.0 的本地持久 eval bridge 已进入真实网关
+- 免费 stream + tools → 200，`text/event-stream`，`tool_calls` delta 与 `[DONE]` 正常
+- tool result follow-up → 200，正确回答 `real-020-content`
+- `magpie provider test nodecode-free` → `✓ chat 4496 ms`；`nodecode` → `✓ chat 2727 ms`（首次两次 free 10s 超时，重试通过，判断为瞬时上游/容量）
+- `magpie quota nodecode-free` 在 0.2.0 仍报 `not configured · no balance endpoint known for it`；这不影响聊天/工具，但说明该 CLI 版本对插件 `auth.usage` 的读取路径与 0.1.1 不同，作为已知小问题保留
 
 ### 6.4 Magpie GUI 验证
 
@@ -342,14 +351,14 @@ rm -rf "$SB"
 
 - [x] 确认厂商条款与账号风险，决定是否发布免费档（个人实验用途）
 - [x] 真实 magpie 安装 `npm:nodecode-magpie@0.1.1`（2026-11-08，从 0.1.0 升级），两个 provider 可见并已登录
-- [ ] 0.2.0 eval bridge 真实 magpie 安装与网关验证（待做）
+- [x] 0.2.0 eval bridge 真实 magpie 安装 `npm:nodecode-magpie@0.2.0` 与真实 gateway `3425` 验证（2026-11-08，free client tool / direct eval / stream / tool follow-up 均通过）
 - [x] 真实 magpie 网关跑“免费纯聊天”与“付费工具调用”
 - [x] 免费档 transcript bridge：多轮、工具调用、tool result、流式全部真实通过
 - [x] Magpie GUI 供应商详情确认两个 provider、key、并发与模型均正确
 - [ ] 加 `magpie.icon`（可选）
 - [x] npm 发布 `nodecode-magpie@0.1.0`（2026-11-08，GitHub Actions run `42451605190`；带 provenance）
 - [x] npm 发布 `nodecode-magpie@0.1.1`（2026-11-08，GitHub Actions run `42457112278`；带 provenance；npm official registry `latest = 0.1.1`）
-- [ ] npm 发布 `nodecode-magpie@0.2.0`（待发）
+- [x] npm 发布 `nodecode-magpie@0.2.0`（2026-11-08，GitHub Actions run `42463006012`；发布后约 20 分钟通过 npm 扫描，official registry `latest = 0.2.0`，tarball shasum `ae971e6a695c0a21ac64f8e2c5e5508c1a5b8d0f`）
 - [x] GitHub Actions 发版流水线 `.github/workflows/release.yml`（tag `v*` 触发测试 + `npm publish --provenance`）
 - [x] GitHub Release `v0.1.0`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.1.0）
 - [x] GitHub Release `v0.1.1`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.1.1）
