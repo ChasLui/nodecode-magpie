@@ -40,10 +40,15 @@ From a local checkout:
 magpie plugins add /abs/path/to/nodecode-magpie
 ```
 
-From npm / git once published:
+From npm (published package):
 
 ```sh
-magpie plugins add nodecode-magpie
+magpie plugins add npm:nodecode-magpie@0.1.0
+```
+
+From a git tag:
+
+```sh
 magpie plugins add github:ChasLui/nodecode-magpie#v0.1.0
 ```
 
@@ -126,6 +131,14 @@ UA, the paid lane preserves tools, and the free lane rejects non-chat routes.
   fetch wrapper applies the configured proxy and strips `X-Magpie-*` headers.
 - No helper functions are exported from `index.mjs`: magpie instantiates every
   exported function as a plugin. Helpers live in `lib/nodecode.mjs`.
+
+## Release
+
+Pushing a `v*` tag runs [`.github/workflows/release.yml`](./.github/workflows/release.yml):
+it runs the unit tests, then `npm publish --access public --provenance`.
+The repository needs an `NPM_TOKEN` secret: a granular npm token with
+`Read and write (publish and stage)` permission for all packages and
+`Bypass two-factor authentication (2FA)` enabled (CI has no OTP).
 
 ## Development
 
