@@ -10,11 +10,11 @@ import {
 } from "./lib/nodecode.mjs"
 
 // Paid NodeCode key: full 1M context and native tool calling.
-export const NodecodePlugin = async () => ({
+export const NodecodePlugin = async (ctx = {}) => ({
   config: async (config) => {
     declareProvider(config, PAID_ID, providerEntry(false))
   },
-  auth: authFor(PAID_ID, { free: false }),
+  auth: authFor(PAID_ID, { free: false, directory: ctx.directory }),
   provider: {
     id: PAID_ID,
     async models() {
@@ -23,12 +23,14 @@ export const NodecodePlugin = async () => ({
   },
 })
 
-// Free NodeCode key: nodecode-cyber-v1 only, 256K context, tools bridged through the single-turn gate.
-export const NodecodeFreePlugin = async () => ({
+// Free NodeCode key: nodecode-cyber-v1 only, 256K context.  The free gate
+// exposes NodeCode's native `eval` tool; direct eval forms run in the local
+// NodeCode image and client tools are bridged through (magpie-tool ...).
+export const NodecodeFreePlugin = async (ctx = {}) => ({
   config: async (config) => {
     declareProvider(config, FREE_ID, providerEntry(true))
   },
-  auth: authFor(FREE_ID, { free: true }),
+  auth: authFor(FREE_ID, { free: true, directory: ctx.directory }),
   provider: {
     id: FREE_ID,
     async models() {

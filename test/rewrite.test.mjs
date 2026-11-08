@@ -49,7 +49,7 @@ async function capture(fetchImpl, body, path = "/v1/chat/completions") {
   return seen
 }
 
-test("free lane sets the nodecode CLI User-Agent and removes every tool field", async () => {
+test("free lane sets the CLI User-Agent and exposes exactly one eval tool", async () => {
   const seen = await capture(makeFetch({ free: true }), {
     model: "nodecode-cyber-v1",
     messages: [{ role: "user", content: "hello" }],
@@ -62,9 +62,12 @@ test("free lane sets the nodecode CLI User-Agent and removes every tool field", 
   assert.equal(seen.headers["user-agent"], FREE_UA)
   const body = JSON.parse(seen.body)
   assert.equal(body.model, "nodecode-cyber-v1")
-  for (const key of ["tools", "tool_choice", "parallel_tool_calls", "functions", "function_call"]) {
-    assert.equal(key in body, false, `${key} leaked`)
-  }
+  assert.equal(body.tools.length, 1)
+  assert.equal(body.tools[0].function.name, "eval")
+  assert.equal("functions" in body, false)
+  assert.equal("function_call" in body, false)
+  assert.equal("parallel_tool_calls" in body, false)
+  assert.match(body.messages[0].content, /^You are a living Common Lisp image/)
 })
 
 test("paid lane keeps tools and uses an honest magpie User-Agent", async () => {
@@ -90,8 +93,9 @@ test("static model metadata reflects the free/paid limits", () => {
   const paid = modelsFor(false)["nodecode-cyber-v1"]
   assert.equal(free.limit.context, 262_144)
   assert.equal(paid.limit.context, 1_048_576)
-  assert.equal(free.tool_call, false)
+  assert.equal(free.tool_call, true)
   assert.equal(paid.tool_call, true)
+  assert.equal(free.capabilities.toolcall, true)
 })
 
 test("key lookup uses the documented env/auth.json/free-key.txt order", () => {

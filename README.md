@@ -7,7 +7,7 @@ Two magpie providers in one package:
 | `nodecode` | paid `sk-nc-…` | 1,048,576 | yes | `nodecode-cyber-v1` |
 | `nodecode-free` | free `sk-nc-…` | 262,144 | yes (bridged) | `nodecode-cyber-v1` |
 
-Both talk to `https://api.nodecode.ai/v1` over the OpenAI Chat Completions wire. The free lane additionally bridges magpie's multi-turn agent transcript and native tool calls through a single-turn JSON protocol — see below.
+Both talk to `https://api.nodecode.ai/v1` over the OpenAI Chat Completions wire. The free lane bridges magpie's tool calls through NodeCode's own `eval` tool and a local persistent Lisp image — see below.
 
 Design notes and magpie 0.1.3240 contract details: [docs/DESIGN.md](./docs/DESIGN.md).
 
@@ -29,12 +29,20 @@ is not propagated to the Go gateway, so it cannot stop the gateway from
 sending tools. The plugin must rewrite the outgoing request in
 `auth.loader.fetch` — the one layer that sees `init.body` as a string.
 
-For the free provider the plugin sets the CLI-shaped User-Agent, removes all
-native tool fields, collapses the conversation into one `system` + one `user`
-message, and (when tools were present) adds a JSON tool-call protocol. The
-model's JSON reply is converted back into ordinary OpenAI `tool_calls`, and
-streaming is synthesized when necessary. The paid provider never rewrites the
-body.
+For the free provider the plugin sets the CLI-shaped User-Agent and then
+chooses one of two bridges:
+
+- **tools present, `tool_choice` not `"none"`** — rewrite the request to
+  NodeCode's single native `eval` tool (exact vendor schema + the four-line
+  Lisp system prompt), preserve the client's tool catalog in the system prompt,
+  and run the model's `eval` calls in a local persistent NodeCode image. Direct
+  forms such as `(sh "ls")` and `(write-file …)` execute locally; client tools
+  are carried as `(magpie-tool "name" "json")` and turned back into normal
+  OpenAI `tool_calls`.
+- **no tools, or `tool_choice: "none"`** — collapse the multi-turn transcript
+  into one `system` + one `user` message and use a JSON tool-call protocol.
+
+The paid provider never rewrites the body.
 
 ## Install
 
@@ -47,13 +55,13 @@ magpie plugins add /abs/path/to/nodecode-magpie
 From npm (published package):
 
 ```sh
-magpie plugins add npm:nodecode-magpie@0.1.1
+magpie plugins add npm:nodecode-magpie@0.2.0
 ```
 
 From a git tag:
 
 ```sh
-magpie plugins add github:ChasLui/nodecode-magpie#v0.1.1
+magpie plugins add github:ChasLui/nodecode-magpie#v0.2.0
 ```
 
 `magpie plugins add` restarts the plugin host. Local-path plugins are loaded in place,
@@ -104,14 +112,40 @@ UA, the bridge collapses multi-turn transcripts and restores native
 `tool_calls` (including synthesized SSE), the paid lane preserves tools, and
 the free lane rejects non-chat routes.
 
-## Free lane: transcript and tool bridge
+## Free lane: eval bridge (tools)
 
-A free key is stricter than "no tools": it only accepts one final user message
-(with at most one system message). Magpie normally sends a long transcript with
-assistant/tool messages, which the vendor rejects with 403 `free_needs_nodecode`
-pointing at the `tools` check.
+The vendor accepts a non-empty `tools` array only when it contains exactly one
+tool named `eval` with NodeCode's own schema, and the system message starts with
+the four-line NodeCode Lisp prompt. The free lane meets that contract honestly:
 
-The free provider therefore does this in `lib/free-bridge.mjs`:
+1. `lib/free-eval.mjs` builds a request with the exact `eval` tool schema and
+   `LISP_PREFIX`, keeps the client's original system prompt, and appends a
+   client-tool catalog plus the `(magpie-tool "name" "json")` convention.
+2. `lib/eval-runner.mjs` executes direct eval forms. It starts **one**
+   `nodecode trial` process and hosts a tiny Unix-socket Lisp REPL in it
+   (`lib/eval-server.mjs`), so definitions made by one eval call survive into
+   the next within the plugin process.
+3. `handleEvalRequest` loops: direct eval results are appended as `tool`
+   messages and sent back; a `(magpie-tool …)` call is returned to magpie as a
+   native `tool_calls` response; streaming clients get a synthesized SSE stream.
+
+The result is the same tool surface as the NodeCode CLI: `(sh …)` for shell,
+`(write-file …)`, `(edit …)`, `(look …)`, plus persistent Lisp definitions.
+Examples:
+
+```lisp
+(sh "git status --short")
+(write-file "/tmp/out.txt" "hello")
+(edit "/tmp/out.txt" "hello" "world")
+(progn (defun double (x) (* x 2)) (double 21))
+```
+
+## Free lane: transcript bridge (no tools)
+
+Without tools the free gate accepts only one final user message (at most one
+system message). Magpie normally sends a long transcript with assistant/tool
+messages, which the vendor rejects with 403 `free_needs_nodecode` pointing at
+the `tools` check. `lib/free-bridge.mjs` therefore:
 
 1. serializes the full conversation (user/assistant/tool messages) into one
    plain-text transcript;
@@ -129,9 +163,10 @@ The free provider therefore does this in `lib/free-bridge.mjs`:
 the model is not asked to call them. If the client disables tools for a
 multi-turn request, only the transcript collapse is applied.
 
-Known limits of the bridge: the model must follow the JSON protocol; malformed
-or unknown tool names fall back to plain text; synthetic tool-call ids are not
-stable across turns; and the assistant's internal reasoning is not preserved.
+Known limits of the transcript bridge: the model must follow the JSON protocol;
+malformed or unknown tool names fall back to plain text; synthetic tool-call ids
+are not stable across turns; and the assistant's internal reasoning is not
+preserved.
 
 ## Free-key limits (vendor docs / measured)
 
@@ -157,7 +192,7 @@ stable across turns; and the assistant's internal reasoning is not preserved.
   `/chat/completions`. Do not switch the model API to `responses` or
   `anthropic` for `nodecode-free`: the plugin rejects it with a clear error
   instead of sending an unsupported route.
-- The paid provider keeps the honest `nodecode-magpie/0.1.1` UA; only the free
+- The paid provider keeps the honest `nodecode-magpie/0.2.0` UA; only the free
   provider uses the `nodecode_cli/…` shape, because only the free gate needs it.
 - Known magpie 0.1.3240 limitation: plugin-model `tool_call` is not carried into
   the gateway model list, so `nodecode-free` may still appear tool-capable in
@@ -208,8 +243,12 @@ package.json
 index.mjs                 # two plugin factories only
 lib/nodecode.mjs          # key lookup, model metadata, fetch rewrite, usage
 lib/free-bridge.mjs       # transcript collapse + JSON tool protocol + SSE
+lib/free-eval.mjs         # native eval tool request/loop/response bridge
+lib/eval-runner.mjs       # nodecode trial runner (persistent + one-shot)
+lib/eval-server.mjs       # persistent Unix-socket Lisp REPL
 test/rewrite.test.mjs     # offline body/UA/config/usage tests
-test/free-bridge.test.mjs # bridge protocol and streaming tests
+test/free-bridge.test.mjs # transcript bridge protocol and streaming tests
+test/free-eval.test.mjs   # eval tool request/loop/client-tool tests
 ```
 ## License
 

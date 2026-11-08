@@ -1,6 +1,6 @@
 {
   "name": "nodecode-magpie",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "NodeCode providers for magpie: paid key with full tools, free key with a transcript/tool bridge",
   "type": "module",
   "main": "./index.mjs",

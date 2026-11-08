@@ -248,7 +248,9 @@ test("makeFetch bridges a free tool request and returns native tool_calls", asyn
       { status: 200, headers: { "content-type": "application/json" } },
     )
   }
-  const response = await makeFetch({ free: true, fetchImpl })(
+  // Exercise the legacy transcript/JSON bridge explicitly; production defaults
+  // to the native eval bridge for tool-bearing free requests.
+  const response = await makeFetch({ free: true, fetchImpl, evalBridge: false })(
     "https://api.nodecode.ai/v1/chat/completions",
     {
       method: "POST",
