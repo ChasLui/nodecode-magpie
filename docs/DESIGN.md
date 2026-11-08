@@ -233,4 +233,5 @@ rm -rf "$SB"
 - [ ] 加 `magpie.icon`（可选）
 - [x] npm 发布 `nodecode-magpie@0.1.0`（2026-11-08，GitHub Actions run `42451605190`；带 provenance；`npm:nodecode-magpie@0.1.0` 在隔离 sandbox 安装并通过双 provider 实测）
 - [x] GitHub Actions 发版流水线 `.github/workflows/release.yml`（tag `v*` 触发测试 + `npm publish --provenance`）
+- [x] GitHub Release `v0.1.0`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.1.0）
 - [ ] magpie 升级后重跑 smoke test
