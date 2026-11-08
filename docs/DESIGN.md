@@ -193,6 +193,7 @@ rm -rf "$SB"
 ```
 
 2026-11-08 实测：free `✓ chat ~2.6 s`、paid `~1.9 s`（另一轮 1.3 s / 1.2 s）；free 带 tools 直接经 `makeFetch` 改写后 200。
+2026-11-08 另验证 git tag 安装：`magpie plugins add github:ChasLui/nodecode-magpie#v0.1.0` → `✓ added`；`provider test` free 1544 ms、paid 1141 ms。
 
 ### 5.3 真实 magpie 网关（agent 链路）
 
