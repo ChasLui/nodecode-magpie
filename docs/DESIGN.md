@@ -256,6 +256,15 @@ rm -rf "$SB"
 - 免费 stream + tools → HTTP 200，`text/event-stream`，含 `tool_calls` delta 与 `[DONE]`
 - `nodecode/nodecode-cyber-v1` 带 tools → HTTP 200，原生 `tool_calls` 正常
 
+同日在本机真实 magpie gateway（`127.0.0.1:3425`，已安装 0.1.1）复测：
+
+- 免费多轮 → 200，`Your name is Chao.`
+- 免费 `read_file` 工具调用 → 200，`finish_reason:"tool_calls"`，arguments `{"path":"/tmp/nc_free_tool_probe.txt"}`
+- tool result follow-up → 200，`It says: hello from free tool probe`
+- 免费 stream + tools → 200，`text/event-stream`，`tool_calls` delta 正常
+- 付费 tools → 200，原生 `tool_calls` 正常
+- `magpie provider test nodecode-free` → `✓ chat 1003 ms · nodecode-cyber-v1`；`nodecode` → `✓ chat 2248 ms · nodecode-cyber-v1`（首次 free 有一次 10s 超时，重试即通过）
+
 ### 6.4 Magpie GUI 验证
 
 2026-11-08 在运行中的 Magpie 桌面端（`w-4160`）验证：
@@ -280,14 +289,14 @@ rm -rf "$SB"
 ## 8. 发布清单
 
 - [x] 确认厂商条款与账号风险，决定是否发布免费档（个人实验用途）
-- [x] 真实 magpie 安装（CLI，`npm:nodecode-magpie@0.1.0`），两个 provider 可见并已登录
+- [x] 真实 magpie 安装 0.1.0（npm）并在 2026-11-08 升级到 0.1.1（`github:ChasLui/nodecode-magpie#v0.1.1`），两个 provider 可见并已登录
 - [x] 真实 magpie 网关跑“免费纯聊天”与“付费工具调用”
 - [x] 免费档 transcript bridge：多轮、工具调用、tool result、流式全部真实通过
 - [x] Magpie GUI 供应商详情确认两个 provider、key、并发与模型均正确
 - [ ] 加 `magpie.icon`（可选）
 - [x] npm 发布 `nodecode-magpie@0.1.0`（2026-11-08，GitHub Actions run `42451605190`；带 provenance）
-- [ ] npm 发布 `nodecode-magpie@0.1.1`（transcript bridge；本清单随发布更新）
+- [x] npm 发布 `nodecode-magpie@0.1.1`（2026-11-08，GitHub Actions run `42457112278`；带 provenance；npm official registry `latest = 0.1.1`）
 - [x] GitHub Actions 发版流水线 `.github/workflows/release.yml`（tag `v*` 触发测试 + `npm publish --provenance`）
 - [x] GitHub Release `v0.1.0`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.1.0）
-- [ ] GitHub Release `v0.1.1`
+- [x] GitHub Release `v0.1.1`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.1.1）
 - [ ] magpie 升级后重跑 smoke test
