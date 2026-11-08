@@ -37,26 +37,26 @@ reach Nodecode.
 From a local checkout:
 
 ```sh
-magpie plugin add /abs/path/to/nodecode-magpie
+magpie plugins add /abs/path/to/nodecode-magpie
 ```
 
 From npm / git once published:
 
 ```sh
-magpie plugin add nodecode-magpie
-magpie plugin add github:ChasLui/nodecode-magpie
+magpie plugins add nodecode-magpie
+magpie plugins add github:ChasLui/nodecode-magpie
 ```
 
-`magpie plugin add` restarts the plugin host. Local-path plugins are loaded in place,
-not copied; after editing, remove and re-add (or `magpie plugin update`) to restart.
+`magpie plugins add` restarts the plugin host. Local-path plugins are loaded in place,
+not copied; after editing, remove and re-add (or `magpie plugins update`) to restart.
 
 ## Sign in
 
 The first method is `keyless: true` and reads a local key without prompting:
 
 ```sh
-magpie plugin login nodecode-free '读取本机 NodeCode 免费 key'
-magpie plugin login nodecode '读取本机 NodeCode key'
+magpie plugins login nodecode-free '读取本机 NodeCode 免费 key'
+magpie plugins login nodecode '读取本机 NodeCode key'
 ```
 
 The second method accepts a pasted key. Key lookup order:
@@ -70,7 +70,7 @@ The plugin only reads these files; it never logs or prints the key.
 ## Verify
 
 ```sh
-magpie plugin list
+magpie plugins list
 magpie provider test nodecode-free
 magpie provider test nodecode
 magpie quota nodecode-free --json
@@ -80,8 +80,8 @@ magpie quota nodecode --json
 A real test against the vendor with both keys passed on 2026-11-08:
 
 ```
-✓ chat  1302 ms · nodecode-cyber-v1   (free)
-✓ chat  1232 ms · nodecode-cyber-v1   (paid)
+✓ chat  ~2.6 s · nodecode-cyber-v1   (free)
+✓ chat  ~1.9 s · nodecode-cyber-v1   (paid)
 ```
 
 Offline tests:
