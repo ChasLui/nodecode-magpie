@@ -23,7 +23,7 @@ export const NodecodePlugin = async () => ({
   },
 })
 
-// Free NodeCode key: nodecode-cyber-v1 only, 256K context, no tools.
+// Free NodeCode key: nodecode-cyber-v1 only, 256K context, tools bridged through the single-turn gate.
 export const NodecodeFreePlugin = async () => ({
   config: async (config) => {
     declareProvider(config, FREE_ID, providerEntry(true))

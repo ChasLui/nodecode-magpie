@@ -1,7 +1,7 @@
 {
   "name": "nodecode-magpie",
-  "version": "0.1.0",
-  "description": "NodeCode providers for magpie: paid key with full tools, free key as a chat-only lane",
+  "version": "0.1.1",
+  "description": "NodeCode providers for magpie: paid key with full tools, free key with a transcript/tool bridge",
   "type": "module",
   "main": "./index.mjs",
   "exports": {

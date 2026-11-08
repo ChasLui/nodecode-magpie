@@ -5,9 +5,9 @@ Two magpie providers in one package:
 | Provider | Key | Context | Tools | Model |
 | --- | --- | --- | --- | --- |
 | `nodecode` | paid `sk-nc-…` | 1,048,576 | yes | `nodecode-cyber-v1` |
-| `nodecode-free` | free `sk-nc-…` | 262,144 | **no** (stripped) | `nodecode-cyber-v1` |
+| `nodecode-free` | free `sk-nc-…` | 262,144 | yes (bridged) | `nodecode-cyber-v1` |
 
-Both talk to `https://api.nodecode.ai/v1` over the OpenAI Chat Completions wire.
+Both talk to `https://api.nodecode.ai/v1` over the OpenAI Chat Completions wire. The free lane additionally bridges magpie's multi-turn agent transcript and native tool calls through a single-turn JSON protocol — see below.
 
 Design notes and magpie 0.1.3240 contract details: [docs/DESIGN.md](./docs/DESIGN.md).
 
@@ -20,17 +20,21 @@ cannot pass them:
 - the provider's User-Agent can only be `agent` or `magpie`;
 - the free key only accepts `POST /v1/chat/completions`;
 - a non-empty `tools` array must be exactly Nodecode's `eval` tool, and then
-  the system prompt must start with the Nodecode Lisp prompt.
+  the system prompt must start with the Nodecode Lisp prompt;
+- even with no tools, only a single user turn is accepted. Any assistant or
+  tool history is rejected as a `tools` violation.
 
 `magpie`'s model capability (`tool_call: false` / `capabilities.toolcall`)
 is not propagated to the Go gateway, so it cannot stop the gateway from
 sending tools. The plugin must rewrite the outgoing request in
 `auth.loader.fetch` — the one layer that sees `init.body` as a string.
 
-This plugin sets the CLI-shaped User-Agent and, for the free provider, deletes
-`tools`, `tool_choice`, `parallel_tool_calls`, `functions`, and `function_call`
-from the JSON body. It also refuses non-chat-completions routes before they
-reach Nodecode.
+For the free provider the plugin sets the CLI-shaped User-Agent, removes all
+native tool fields, collapses the conversation into one `system` + one `user`
+message, and (when tools were present) adds a JSON tool-call protocol. The
+model's JSON reply is converted back into ordinary OpenAI `tool_calls`, and
+streaming is synthesized when necessary. The paid provider never rewrites the
+body.
 
 ## Install
 
@@ -43,13 +47,13 @@ magpie plugins add /abs/path/to/nodecode-magpie
 From npm (published package):
 
 ```sh
-magpie plugins add npm:nodecode-magpie@0.1.0
+magpie plugins add npm:nodecode-magpie@0.1.1
 ```
 
 From a git tag:
 
 ```sh
-magpie plugins add github:ChasLui/nodecode-magpie#v0.1.0
+magpie plugins add github:ChasLui/nodecode-magpie#v0.1.1
 ```
 
 `magpie plugins add` restarts the plugin host. Local-path plugins are loaded in place,
@@ -92,11 +96,42 @@ A real test against the vendor with both keys passed on 2026-11-08:
 Offline tests:
 
 ```sh
-node --test test/rewrite.test.mjs
+npm test
 ```
 
 The tests prove that the free lane removes every tool field and sets the CLI
-UA, the paid lane preserves tools, and the free lane rejects non-chat routes.
+UA, the bridge collapses multi-turn transcripts and restores native
+`tool_calls` (including synthesized SSE), the paid lane preserves tools, and
+the free lane rejects non-chat routes.
+
+## Free lane: transcript and tool bridge
+
+A free key is stricter than "no tools": it only accepts one final user message
+(with at most one system message). Magpie normally sends a long transcript with
+assistant/tool messages, which the vendor rejects with 403 `free_needs_nodecode`
+pointing at the `tools` check.
+
+The free provider therefore does this in `lib/free-bridge.mjs`:
+
+1. serializes the full conversation (user/assistant/tool messages) into one
+   plain-text transcript;
+2. sends one `system` (the original system prompt, unchanged) plus one `user`
+   message (the transcript plus a continuation instruction);
+3. when the client supplied tools, lists their names/descriptions/JSON schemas
+   and asks the model to answer with
+   `{"type":"tool_call","name":"…","arguments":{…}}` or a
+   `{"type":"tool_calls",...}` batch;
+4. parses that JSON out of the reply (tolerating prose/code fences), rebuilds
+   native `tool_calls`, and for streaming clients synthesizes an OpenAI SSE
+   stream from the non-streamed upstream response.
+
+`tool_choice: "none"` is treated as a pure-chat request; tools are removed and
+the model is not asked to call them. If the client disables tools for a
+multi-turn request, only the transcript collapse is applied.
+
+Known limits of the bridge: the model must follow the JSON protocol; malformed
+or unknown tool names fall back to plain text; synthetic tool-call ids are not
+stable across turns; and the assistant's internal reasoning is not preserved.
 
 ## Free-key limits (vendor docs / measured)
 
@@ -104,9 +139,10 @@ UA, the paid lane preserves tools, and the free lane rejects non-chat routes.
 - route: chat requests must be `POST /v1/chat/completions`; `/v1/responses`
   and `/v1/messages` are 403 `route`.
 - client: free key works only from Nodecode CLI; other clients get 403
-  `free_needs_nodecode`. This plugin impersonates the CLI's User-Agent. That
-  is a vendor-term risk; the vendor docs tell non-CLI clients to use a paid
-  key. Use the free provider for chat/summaries, not as a general agent.
+  `free_needs_nodecode`. This plugin impersonates the CLI's User-Agent and
+  bridges the single-turn limit. That is a vendor-term risk; the vendor docs
+  tell non-CLI clients to use a paid key. Use the free provider for personal
+  experiments and light agent work, not as a production/stable channel.
 - context: 256K (paid: 1M); output ceiling 131,072, default 16K.
 - concurrency: 2 requests per account (`maxConcurrency: 2` is set).
 - rate: 40 req/min; 3M tokens per 24h for 14 days after the first card top-up;
@@ -121,7 +157,7 @@ UA, the paid lane preserves tools, and the free lane rejects non-chat routes.
   `/chat/completions`. Do not switch the model API to `responses` or
   `anthropic` for `nodecode-free`: the plugin rejects it with a clear error
   instead of sending an unsupported route.
-- The paid provider keeps the honest `nodecode-magpie/0.1.0` UA; only the free
+- The paid provider keeps the honest `nodecode-magpie/0.1.1` UA; only the free
   provider uses the `nodecode_cli/…` shape, because only the free gate needs it.
 - Known magpie 0.1.3240 limitation: plugin-model `tool_call` is not carried into
   the gateway model list, so `nodecode-free` may still appear tool-capable in
@@ -144,10 +180,9 @@ The repository needs an `NPM_TOKEN` secret: a granular npm token with
 
 ```sh
 npm test                 # node --test
-node --test test/rewrite.test.mjs
 ```
 
-The unit tests use a local HTTP server; they do not call NodeCode or need a key.
+The unit tests use mocked fetch responses; they do not call NodeCode or need a key.
 
 For a real sandbox smoke test, isolate `HOME`/`XDG_*` and use a separate
 `MAGPIE_ADDR` so the real magpie config is never touched:
@@ -172,7 +207,9 @@ rm -rf "$SB"
 package.json
 index.mjs                 # two plugin factories only
 lib/nodecode.mjs          # key lookup, model metadata, fetch rewrite, usage
-test/rewrite.test.mjs     # offline body/UA tests
+lib/free-bridge.mjs       # transcript collapse + JSON tool protocol + SSE
+test/rewrite.test.mjs     # offline body/UA/config/usage tests
+test/free-bridge.test.mjs # bridge protocol and streaming tests
 ```
 ## License
 
