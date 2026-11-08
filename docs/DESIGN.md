@@ -333,7 +333,7 @@ rm -rf "$SB"
 - 供应商页同时显示「NodeCode Free」与「NodeCode」，两个开关均为启用状态
 - NodeCode Free 详情：账号 `API key …zJKY`、并发 2、模型 `NodeCode Cyber v1 (Free) 免费`
 - NodeCode 详情：账号 `API key …vo98`、模型 `NodeCode Cyber v1 1.0M`
-- 与 CLI `plugins list --json`、`provider test`、`quota` 的结果一致
+- 与 CLI `plugins list --json`、`provider test` 的结果一致；`magpie quota` 在 0.2.0 的已知问题见 §6.3
 
 ## 7. 风险与边界
 
