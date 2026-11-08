@@ -192,7 +192,7 @@ m plugins rm ./
 rm -rf "$SB"
 ```
 
-2026-11-08 实测：free `✓ chat 1302 ms`，paid `✓ chat 1232 ms`；free 带 tools 直接经 `makeFetch` 改写后 200。
+2026-11-08 实测：free `✓ chat ~2.6 s`、paid `~1.9 s`（另一轮 1.3 s / 1.2 s）；free 带 tools 直接经 `makeFetch` 改写后 200。
 
 ## 6. 风险与边界
 
@@ -208,7 +208,7 @@ rm -rf "$SB"
 ## 7. 发布清单
 
 - [ ] 确认厂商条款与账号风险，决定是否发布免费档
-- [ ] 真实 magpie GUI 安装，确认两个 provider 可见
+- [x] 真实 magpie 安装（CLI），两个 provider 可见并已登录
 - [ ] 真实 agent 跑“免费纯聊天”与“付费工具调用”
 - [ ] 加 `magpie.icon`（可选）
 - [ ] npm 包名 `nodecode-magpie` 是否可用
