@@ -203,6 +203,15 @@ rm -rf "$SB"
 - `nodecode-free/nodecode-cyber-v1` 带 `tools` → HTTP 200，响应无 `tool_calls`（插件已删掉 tools，免费门禁通过）
 - `nodecode/nodecode-cyber-v1` 带 `tools` → HTTP 200，`finish_reason: "tool_calls"`，正确返回 `read_file` 工具调用
 
+### 5.4 Magpie GUI 验证
+
+2026-11-08 在运行中的 Magpie 桌面端（`w-4160`）验证：
+
+- 供应商页同时显示「NodeCode Free」与「NodeCode」，两个开关均为启用状态
+- NodeCode Free 详情：账号 `API key …zJKY`、并发 2、模型 `NodeCode Cyber v1 (Free) 免费`
+- NodeCode 详情：账号 `API key …vo98`、模型 `NodeCode Cyber v1 1.0M`
+- 与 CLI `plugins list --json`、`provider test`、`quota` 的结果一致
+
 ## 6. 风险与边界
 
 1. **厂商条款/封号风险（最重要）**：免费 key 文档要求只从 NodeCode CLI 使用；插件伪装 CLI UA 是规避客户端限制。不要把它当长期稳定方案。免费档只适合个人实验、纯聊天/摘要；编码 agent 请用付费档。
@@ -220,6 +229,7 @@ rm -rf "$SB"
 - [ ] 确认厂商条款与账号风险，决定是否发布免费档
 - [x] 真实 magpie 安装（CLI，`npm:nodecode-magpie@0.1.0`），两个 provider 可见并已登录
 - [x] 真实 magpie 网关跑“免费纯聊天”与“付费工具调用”
+- [x] Magpie GUI 供应商详情确认两个 provider、key、并发与模型均正确
 - [ ] 加 `magpie.icon`（可选）
 - [x] npm 发布 `nodecode-magpie@0.1.0`（2026-11-08，GitHub Actions run `42451605190`；带 provenance；`npm:nodecode-magpie@0.1.0` 在隔离 sandbox 安装并通过双 provider 实测）
 - [x] GitHub Actions 发版流水线 `.github/workflows/release.yml`（tag `v*` 触发测试 + `npm publish --provenance`）
