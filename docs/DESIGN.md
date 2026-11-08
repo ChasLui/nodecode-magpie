@@ -324,7 +324,7 @@ rm -rf "$SB"
 - 免费 stream + tools → 200，`text/event-stream`，`tool_calls` delta 与 `[DONE]` 正常
 - tool result follow-up → 200，正确回答 `real-020-content`
 - `magpie provider test nodecode-free` → `✓ chat 4496 ms`；`nodecode` → `✓ chat 2727 ms`（首次两次 free 10s 超时，重试通过，判断为瞬时上游/容量）
-- `magpie quota nodecode-free` 在 0.2.0 仍报 `not configured · no balance endpoint known for it`；这不影响聊天/工具，但说明该 CLI 版本对插件 `auth.usage` 的读取路径与 0.1.1 不同，作为已知小问题保留
+- `magpie quota nodecode-free --json` 在 0.2.0 正确返回 `plan:"Free"`、`balance:"Free"`；不带 `--json` 的人类可读形式仍可能报 `not configured · no balance endpoint known for it`（该 CLI 版本的 balance 展示路径），不影响聊天/工具
 
 ### 6.4 Magpie GUI 验证
 
