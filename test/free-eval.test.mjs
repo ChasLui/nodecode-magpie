@@ -516,3 +516,167 @@ test("runEvalForm does not replay a timed-out form in a second process", async (
   assert.match(String(result), /ERROR|THREW/)
   assert.equal(oneShotCalls, 0)
 })
+
+test("handleEvalRequest describes an image through look and continues the loop", async () => {
+  const seen = []
+  const lookCalls = []
+  let round = 0
+  const fetchImpl = async (_input, init) => {
+    seen.push(JSON.parse(init.body))
+    round += 1
+    if (round === 1) {
+      return jsonResponse({
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: "assistant",
+              content: null,
+              tool_calls: [
+                {
+                  id: "look_eval_1",
+                  type: "function",
+                  function: {
+                    name: "eval",
+                    arguments: JSON.stringify({
+                      form: '(magpie-tool "look" "{\\"path\\":\\"/tmp/pic.png\\"}")',
+                    }),
+                  },
+                },
+              ],
+            },
+            finish_reason: "tool_calls",
+          },
+        ],
+      })
+    }
+    return jsonResponse({ choices: [{ index: 0, message: { content: "the card says hi" }, finish_reason: "stop" }] })
+  }
+  const plan = makeEvalRequest(
+    { messages: [{ role: "user", content: "read the picture" }], tools: [readFile] },
+    [{ name: "read_file", description: "Read a text file", parameters: readFile.function.parameters }],
+  )
+  const response = await handleEvalRequest({
+    input: "https://api.nodecode.ai/v1/chat/completions",
+    init: { method: "POST" },
+    headers: new Headers({ "content-type": "application/json" }),
+    body: plan.body,
+    plan,
+    fetchImpl,
+    lookRunner: async (args) => {
+      lookCalls.push(args)
+      return "a white card with the word hi"
+    },
+  })
+  const data = await response.json()
+  assert.equal(data.choices[0].message.content, "the card says hi")
+  assert.equal(lookCalls.length, 1)
+  assert.equal(lookCalls[0].path, "/tmp/pic.png")
+  assert.equal(seen.length, 2)
+  assert.equal(seen[1].messages.at(-1).role, "tool")
+  assert.equal(seen[1].messages.at(-1).content, "a white card with the word hi")
+})
+
+test("handleEvalRequest returns a look error as a tool result", async () => {
+  let round = 0
+  const fetchImpl = async () => {
+    round += 1
+    if (round === 1) {
+      return jsonResponse({
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: "assistant",
+              content: null,
+              tool_calls: [
+                {
+                  id: "look_eval_2",
+                  type: "function",
+                  function: {
+                    name: "eval",
+                    arguments: JSON.stringify({ form: '(magpie-tool "look" "{\\"path\\":\\"/nope.png\\"}")' }),
+                  },
+                },
+              ],
+            },
+            finish_reason: "tool_calls",
+          },
+        ],
+      })
+    }
+    return jsonResponse({ choices: [{ index: 0, message: { content: "could not read it" }, finish_reason: "stop" }] })
+  }
+  const plan = makeEvalRequest(
+    { messages: [{ role: "user", content: "read it" }], tools: [readFile] },
+    [{ name: "read_file", description: "Read a text file", parameters: readFile.function.parameters }],
+  )
+  const response = await handleEvalRequest({
+    input: "https://api.nodecode.ai/v1/chat/completions",
+    init: { method: "POST" },
+    headers: new Headers({ "content-type": "application/json" }),
+    body: plan.body,
+    plan,
+    fetchImpl,
+    lookRunner: async () => {
+      throw new Error("cannot read /nope.png")
+    },
+  })
+  const data = await response.json()
+  assert.equal(data.choices[0].message.content, "could not read it")
+})
+
+test("handleEvalRequest normalizes a native look call before calling upstream", async () => {
+  const bodies = []
+  let round = 0
+  const fetchImpl = async (_input, init) => {
+    bodies.push(JSON.parse(init.body))
+    round += 1
+    if (round === 1) {
+      return jsonResponse({
+        id: "r-look-native",
+        model: "nodecode-cyber-v1",
+        choices: [{
+          index: 0,
+          finish_reason: "tool_calls",
+          message: {
+            role: "assistant",
+            content: null,
+            tool_calls: [{
+              id: "native_look_1",
+              type: "function",
+              function: { name: "look", arguments: '{"path":"/tmp/native.png"}' },
+            }],
+          },
+        }],
+      })
+    }
+    return jsonResponse({
+      id: "r-look-native-final",
+      model: "nodecode-cyber-v1",
+      choices: [{ index: 0, finish_reason: "stop", message: { role: "assistant", content: "native-look-done" } }],
+    })
+  }
+  const seen = []
+  const response = await handleEvalRequest({
+    body: { model: "nodecode-cyber-v1", messages: [{ role: "user", content: "read the image" }] },
+    plan: { model: "nodecode-cyber-v1", tools: [], cwd: "/tmp" },
+    fetchImpl,
+    lookRunner: async (args) => {
+      seen.push(args)
+      return "native-look-ok"
+    },
+    maxRounds: 3,
+  })
+  assert.equal(response.status, 200)
+  assert.equal(seen.length, 1)
+  assert.equal(seen[0].path, "/tmp/native.png")
+  const assistant = bodies[1].messages.find((message) => message.role === "assistant")
+  assert.equal(assistant.tool_calls[0].function.name, "eval")
+  assert.match(assistant.tool_calls[0].function.arguments, /magpie-tool/)
+  const tool = bodies[1].messages.find((message) => message.role === "tool")
+  assert.equal(tool.tool_call_id, "native_look_1")
+  assert.equal(tool.content, "native-look-ok")
+  const data = await response.json()
+  assert.equal(data.choices[0].message.content, "native-look-done")
+})

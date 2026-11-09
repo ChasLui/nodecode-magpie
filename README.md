@@ -5,7 +5,7 @@ Two magpie providers in one package:
 | Provider | Key | Context | Tools | Model |
 | --- | --- | --- | --- | --- |
 | `nodecode` | paid `sk-nc-…` | 1,048,576 | yes | `nodecode-cyber-v1` |
-| `nodecode-free` | free `sk-nc-…` | 262,144 | yes (bridged) | `nodecode-cyber-v1` |
+| `nodecode-free` | free `sk-nc-…` | 262,144 | yes (bridged; `look` via vision model) | `nodecode-cyber-v1` |
 
 Both talk to `https://api.nodecode.ai/v1` over the OpenAI Chat Completions wire. The free lane bridges magpie's tool calls through NodeCode's own `eval` tool and a local persistent Lisp image — see below.
 
@@ -55,13 +55,13 @@ magpie plugins add /abs/path/to/nodecode-magpie
 From npm (published package):
 
 ```sh
-magpie plugins add npm:nodecode-magpie@0.4.0
+magpie plugins add npm:nodecode-magpie@0.4.1
 ```
 
 From a git tag:
 
 ```sh
-magpie plugins add github:ChasLui/nodecode-magpie#v0.4.0
+magpie plugins add github:ChasLui/nodecode-magpie#v0.4.1
 ```
 
 `magpie plugins add` restarts the plugin host. Local-path plugins are loaded in place,
@@ -204,9 +204,22 @@ magpie supplies to provider plugins. Eval shells start in that workspace, and
 each session/subagent gets a separate image and definition scope. These headers are plugin-only; they are
 never forwarded to NodeCode.
 
-**`(look …)` is unavailable in this lane.** The free model is text-only, so
-NodeCode's own `look` refuses with *"deepseek-v4-flash-free reads text only"*.
-Read images with the client's own tools instead; the lane prompt says so.
+**`(look …)` is bridged through a vision model.** The free model is text-only,
+so NodeCode's own Lisp `look` refuses with *"deepseek-v4-flash-free reads text
+only"*.  The plugin provides the same capability through a client helper:
+
+```json
+{"form": "(magpie-tool \"look\" \"{\\\"path\\\":\\\"screenshot.png\\\",\\\"prompt\\\":\\\"read the error dialog\\\"}\")"}
+```
+
+The helper reads a local PNG/JPEG/GIF/WebP (up to 5 MiB), sends it to a vision
+model on the magpie gateway, and returns the description as the tool result.
+The default model is `auto/deepseek-v4.1-flash`; override with
+`NODECODE_VISION_MODEL`.  The gateway is derived from `MAGPIE_ADDR` (usually
+`http://127.0.0.1:3425/v1`) and can be overridden with
+`NODECODE_VISION_BASE_URL`; `NODECODE_VISION_API_KEY` (or the gateway key
+already in `MAGPIE_GATEWAY_KEY`) and `NODECODE_VISION_TIMEOUT_MS` are also supported.  Relative paths resolve
+against the agent workspace.
 
 ## Free lane: transcript bridge (no tools)
 
@@ -260,7 +273,7 @@ preserved.
   `/chat/completions`. Do not switch the model API to `responses` or
   `anthropic` for `nodecode-free`: the plugin rejects it with a clear error
   instead of sending an unsupported route.
-- The paid provider keeps the honest `nodecode-magpie/0.4.0` UA; only the free
+- The paid provider keeps an honest `nodecode-magpie/<version>` UA; only the free
   provider uses the `nodecode_cli/…` shape, because only the free gate needs it.
 - Known magpie 0.1.3240 limitation: plugin-model `tool_call` is not carried into
   the gateway model list, so `nodecode-free` may still appear tool-capable in
@@ -315,10 +328,12 @@ lib/free-eval.mjs         # native eval tool request/loop/response bridge
 lib/eval-runner.mjs       # nodecode trial runner (persistent + one-shot)
 lib/eval-server.mjs       # persistent JSON-lines client for the Lisp service
 lib/eval-server.lisp      # the service itself: threads, yield, status, interrupt
+lib/vision.mjs            # look bridge: read image -> magpie vision model -> text
 test/rewrite.test.mjs     # offline body/UA/config/usage tests
 test/free-bridge.test.mjs # transcript bridge protocol and streaming tests
 test/free-eval.test.mjs   # eval tool request/loop/client-tool tests
 test/eval-server.test.mjs # live image: persistence, concurrency, yield, strings
+test/vision.test.mjs      # image validation and vision request tests
 ```
 ## License
 
