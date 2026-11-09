@@ -392,6 +392,8 @@ rm -rf "$SB"
 - [x] npm 发布 `nodecode-magpie@0.3.0`（2026-11-09，GitHub Actions run `42551766609`；official registry `latest = 0.3.0`，tarball shasum `45c6f6ad154f93077280aeb5c9dfb3f5575482f4`）
 - [x] GitHub Release `v0.3.0`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.3.0）
 - [x] 0.4.0 workspace/session 隔离 + 32 轮本地验证（2026-11-09：`npm test` 44/44；真实 magpie provider test free 1945ms / paid 2322ms；gateway 3425 free direct eval `v040-ok`；session/subagent 隔离：`scope-a` 定义在 `scope-b` 不可见）
+- [x] npm 发布 `nodecode-magpie@0.4.0`（2026-11-09，GitHub Actions run `42560665859`；发布后约 18 分钟通过 npm 扫描，official registry `latest = 0.4.0`，tarball shasum `f64967b739a2a671bf126f6e66a93dbfdb65e45a`）
+- [x] GitHub Release `v0.4.0`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.4.0）
 - [x] GitHub Actions 发版流水线 `.github/workflows/release.yml`（tag `v*` 触发测试 + `npm publish --provenance`）
 - [x] GitHub Release `v0.1.0`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.1.0）
 - [x] GitHub Release `v0.1.1`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.1.1）
