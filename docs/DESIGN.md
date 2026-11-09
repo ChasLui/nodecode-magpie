@@ -2,7 +2,7 @@
 
 > 目标：在 magpie 中提供两个 NodeCode 供应商：`nodecode`（付费 key，完整工具、1M context）与 `nodecode-free`（免费 key，仅 `nodecode-cyber-v1`、256K context；用 NodeCode 原生 `eval` tool + 本地持久 Lisp image 释放与 CLI 相同的工具能力）。
 >
-> 版本：0.5.1（2026-11-09）。magpie 宿主契约按 0.1.3240 核对。
+> 版本：0.5.2（2026-11-09）。magpie 宿主契约按 0.1.3240 核对。
 
 ## 1. 结论：为什么必须写插件
 
@@ -51,7 +51,7 @@ https://api.nodecode.ai/v1/chat/completions
 
 | 维度 | `nodecode` | `nodecode-free` |
 | --- | --- | --- |
-| User-Agent | `nodecode-magpie/0.5.1`（诚实） | `nodecode_cli/<version> (<OS> <release>; <arch>) <TERM>` |
+| User-Agent | `nodecode-magpie/0.5.2`（诚实） | `nodecode_cli/<version> (<OS> <release>; <arch>) <TERM>` |
 | body（有 tools） | 原样转发 | 单 `eval` tool + Lisp 前缀 + 工具目录；本地执行 eval，client tools 走 `(magpie-tool ...)` |
 | body（无 tools） | 原样转发 | 单轮化；删除 tools 五件套；需要时注入 JSON 工具协议 |
 | 路由 | 由模型 API 决定 | 只允许 `/chat/completions`，否则本地抛错 |
@@ -115,7 +115,7 @@ https://api.nodecode.ai/v1/chat/completions
 
 免费 key 的 `tools` 检查实际上把「无 tools」也限制成单轮：`[system,user]` 和 `[user]` 通过；`[user,user]`、`[system,user,user]`、`[user,assistant]`、`[assistant,user]` 全部 403 `free_needs_nodecode`，message 指向 `tools`。真实 agent 每轮都会带完整历史，所以旧版「只删 tools」的实现会在第二轮开始全部失败。
 
-0.2.0 起分两条路（0.3.0 起 eval 语义与 CLI 对齐；0.4.0 起按 workspace/session 隔离并支持 32 轮；0.4.1 起支持 look 视觉桥，0.4.2 起支持原生图片输入，0.5.0 起定义跨宿主重启保留；0.5.1 起 Lisp `(look ...)` 直接可用）：**有 tools** 走 NodeCode 原生 `eval` tool（真正释放 CLI 能力），**无 tools** 才走 transcript 单轮化。
+0.2.0 起分两条路（0.3.0 起 eval 语义与 CLI 对齐；0.4.0 起按 workspace/session 隔离并支持 32 轮；0.4.1 起支持 look 视觉桥，0.4.2 起支持原生图片输入，0.5.0 起定义跨宿主重启保留；0.5.1 起 Lisp `(look ...)` 直接可用；0.5.2 起**无 tools 的请求默认也走 eval image**，只有 `tool_choice:"none"` 或 `max_tokens < 256` 才回退 transcript 单轮化）：有 tools（或无 tools 但回复预算足够）走 NodeCode 原生 `eval` tool（真正释放 CLI 能力）。
 
 ### 4.2 带工具的 eval bridge
 
@@ -236,7 +236,7 @@ eval 工具可带 `strings` 对象；服务端用 `progv` 在线程内绑定 `no
 ### 4.5 已知边界
 
 - eval image 按 `(binary, workspace, session, subagent)` 隔离；主会话与子代理不共享定义（0.4.0 起）。
-- 免费档的 Lisp `(look ...)` 在 tools/eval lane 直接可用（0.5.1 起，经私有 socket）；无 tools 的 transcript lane 无法执行 Lisp，只能处理请求里的原生图片 part。视觉桥依赖本机 magpie gateway 上有一个可用的图像模型。
+- 免费档的 Lisp `(look ...)` 在 eval lane 直接可用（0.5.1 起，经私有 socket）；0.5.2 起无 tools 的普通请求也进同一 lane，只有 `tool_choice:"none"` 或 `max_tokens < 256` 的纯短答请求留在 transcript lane，无法执行 Lisp、只能处理请求里的原生图片 part。视觉桥依赖本机 magpie gateway 上有一个可用的图像模型。
 - 后台 eval 的 `output` 只在存活期间可读；已退出 eval 的结果保留在内存，服务重启即丢（与 CLI 的 log 落盘不同）。定义是例外：definition 形式的表单写入 `~/.nodecode-magpie/history/<hash>.jsonl`，新 image 启动时回放，使 `defun` 在插件宿主重启后仍可调用。
 - eval 以运行 magpie 的用户权限执行，拥有完整 host authority。
 - transcript bridge（无 tools）仍要求模型遵循 JSON 协议；不遵循时退化为普通文本，工具名必须在客户端 tools 列表中。
@@ -312,7 +312,7 @@ export const FREE_UA =
 npm test
 ```
 
-64 个测试（`test/rewrite.test.mjs` + `test/free-bridge.test.mjs` + `test/free-eval.test.mjs` + `test/eval-server.test.mjs` + `test/eval-history.test.mjs` + `test/vision.test.mjs`）：免费/付费请求改写、UA、路由拒绝、模型元数据、key 查找、config 深合并、usage 映射、transcript 单轮化、JSON 工具协议解析、native `tool_calls` 还原、SSE 合成、eval tool 请求、`(magpie-tool ...)` 解析、direct eval 本地执行循环、client tool 还原、`look` 视觉桥（路径/大小/格式校验、data URI 请求、错误回喂）、原生图片输入桥（data/http/file、4 张上限、失败降级）、视觉模型回退、定义历史（只保留 definition 形式、回放后跨 image 可用）。
+67 个测试（`test/rewrite.test.mjs` + `test/free-bridge.test.mjs` + `test/free-eval.test.mjs` + `test/eval-server.test.mjs` + `test/eval-history.test.mjs` + `test/vision.test.mjs`）：免费/付费请求改写、UA、路由拒绝、模型元数据、key 查找、config 深合并、usage 映射、transcript 单轮化、JSON 工具协议解析、native `tool_calls` 还原、SSE 合成、eval tool 请求、`(magpie-tool ...)` 解析、direct eval 本地执行循环、client tool 还原、`look` 视觉桥（路径/大小/格式校验、data URI 请求、错误回喂）、原生图片输入桥（data/http/file、4 张上限、失败降级）、视觉模型回退、定义历史（只保留 definition 形式、回放后跨 image 可用）、无 tools 请求进 eval image 与小 `max_tokens` 回退、`tool_choice:none` 保持 transcript。
 
 ### 6.2 真实 smoke test
 
@@ -432,6 +432,7 @@ rm -rf "$SB"
 - [x] npm 发布 `nodecode-magpie@0.5.1`（2026-11-09，GitHub Actions run `42631362571`；official registry `latest = 0.5.1`，tarball shasum `9553b9447b23578569a477411d24f118003b1c0f`）
 - [x] GitHub Release `v0.5.1`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.5.1）
 - [x] npm 0.5.1 真实 magpie 安装验证（2026-11-09：provider test free `3131 ms` / paid `1097 ms`；gateway 3425 free lane 用嵌套 `(concatenate 'string "X" (look ...))` 返回 `XBANANA-COMET-31415`，200/17.5s）
+- [x] 0.5.2 无 tools 请求同样进 eval image 本地验证（2026-11-09：`npm test` 67/67；直连 NodeCode API 的无 tools 请求用 `(sh ...)` 写出 `/tmp/nc-notools-052.txt` 并读回 `notools-lane-ok`；gateway 3425 无 tools 请求写出 `/tmp/nc-gw-notools-052.txt`，200/3.1s；provider test free 回归 `2549 ms`——它带 `max_tokens:16`，按设计留在 transcript lane）
 - [x] GitHub Actions 发版流水线 `.github/workflows/release.yml`（tag `v*` 触发测试 + `npm publish --provenance`）
 - [x] GitHub Release `v0.1.0`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.1.0）
 - [x] GitHub Release `v0.1.1`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.1.1）

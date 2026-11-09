@@ -32,15 +32,18 @@ sending tools. The plugin must rewrite the outgoing request in
 For the free provider the plugin sets the CLI-shaped User-Agent and then
 chooses one of two bridges:
 
-- **tools present, `tool_choice` not `"none"`** — rewrite the request to
-  NodeCode's single native `eval` tool (exact vendor schema + the four-line
-  Lisp system prompt), preserve the client's tool catalog in the system prompt,
-  and run the model's `eval` calls in a local persistent NodeCode image. Direct
-  forms such as `(sh "ls")` and `(write-file …)` execute locally; client tools
-  are carried as `(magpie-tool "name" "json")` and turned back into normal
-  OpenAI `tool_calls`.
-- **no tools, or `tool_choice: "none"`** — collapse the multi-turn transcript
-  into one `system` + one `user` message and use a JSON tool-call protocol.
+- **tools present, or no tools with a reply budget of at least 256 tokens** —
+  rewrite the request to NodeCode's single native `eval` tool (exact vendor
+  schema + the four-line Lisp system prompt), preserve the client's tool
+  catalog in the system prompt, and run the model's `eval` calls in a local
+  persistent NodeCode image. Direct forms such as `(sh "ls")`,
+  `(write-file …)` and `(look "shot.png")` execute locally; client tools are
+  carried as `(magpie-tool "name" "json")` and turned back into normal OpenAI
+  `tool_calls`. A client that declares no tools at all still gets this image,
+  so the free lane is an agent rather than plain chat.
+- **`tool_choice: "none"`, or a `max_tokens` too small to render a tool call
+  (below 256)** — collapse the multi-turn transcript into one `system` + one
+  `user` message and use a JSON tool-call protocol.
 
 The paid provider never rewrites the body.
 
@@ -55,7 +58,7 @@ magpie plugins add /abs/path/to/nodecode-magpie
 From npm (published package):
 
 ```sh
-magpie plugins add npm:nodecode-magpie@0.5.1
+magpie plugins add npm:nodecode-magpie@0.5.2
 ```
 
 If the configured npm mirror has not caught up yet, point Bun at the official
@@ -63,13 +66,13 @@ registry for this one command:
 
 ```sh
 NPM_CONFIG_REGISTRY=https://registry.npmjs.org \
-  magpie plugins add npm:nodecode-magpie@0.5.1
+  magpie plugins add npm:nodecode-magpie@0.5.2
 ```
 
 From a git tag:
 
 ```sh
-magpie plugins add github:ChasLui/nodecode-magpie#v0.5.1
+magpie plugins add github:ChasLui/nodecode-magpie#v0.5.2
 ```
 
 `magpie plugins add` restarts the plugin host. Local-path plugins are loaded in place,
@@ -255,10 +258,12 @@ images per request, 5 MiB each; a failed description becomes
 `[image unavailable: …]` and the request still proceeds. Paid requests keep
 their native image parts unchanged.
 
-## Free lane: transcript bridge (no tools)
+## Free lane: transcript bridge (`tool_choice: "none"` or a tiny `max_tokens`)
 
-Without tools the free gate accepts only one final user message (at most one
-system message). Magpie normally sends a long transcript with assistant/tool
+A pure-chat free request—one that sets `tool_choice: "none"` or a reply budget
+too small to render a tool call (< 256 tokens)—stays out of the eval image.
+The free gate then accepts only one final user message (at most one system
+message), while Magpie normally sends a long transcript with assistant/tool
 messages, which the vendor rejects with 403 `free_needs_nodecode` pointing at
 the `tools` check. `lib/free-bridge.mjs` therefore:
 
@@ -275,8 +280,9 @@ the `tools` check. `lib/free-bridge.mjs` therefore:
    stream from the non-streamed upstream response.
 
 `tool_choice: "none"` is treated as a pure-chat request; tools are removed and
-the model is not asked to call them. If the client disables tools for a
-multi-turn request, only the transcript collapse is applied.
+the model is not asked to call them. The same holds for a `max_tokens` below
+256, where an eval call could not be rendered reliably. If such a client still
+sends a multi-turn request, only the transcript collapse is applied.
 
 Known limits of the transcript bridge: the model must follow the JSON protocol;
 malformed or unknown tool names fall back to plain text; synthetic tool-call ids
@@ -366,7 +372,8 @@ lib/vision.mjs            # look bridge: read image -> magpie vision model -> te
 test/rewrite.test.mjs     # offline body/UA/config/usage tests
 test/free-bridge.test.mjs # transcript bridge protocol and streaming tests
 test/free-eval.test.mjs   # eval tool request/loop/client-tool tests
-test/eval-server.test.mjs # live image: persistence, concurrency, yield, strings
+test/eval-server.test.mjs # live image: persistence, concurrency, yield, strings, look
+test/eval-history.test.mjs # definition history across a host restart
 test/vision.test.mjs      # image validation and vision request tests
 ```
 ## License

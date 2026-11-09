@@ -364,6 +364,78 @@ test("makeFetch runs eval in the agent's workspace and session", async () => {
   }
 })
 
+test("makeFetch gives a tool-less free request the eval image too", async () => {
+  const seen = []
+  const fetchImpl = async (_input, init) => {
+    seen.push(JSON.parse(init.body))
+    return jsonResponse({
+      choices: [{ index: 0, message: { role: "assistant", content: "plain answer" }, finish_reason: "stop" }],
+    })
+  }
+  const response = await makeFetch({ free: true, fetchImpl, evalRunner: async () => "unused" })(
+    "https://api.nodecode.ai/v1/chat/completions",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        model: "nodecode-cyber-v1",
+        messages: [{ role: "user", content: "say hi" }],
+      }),
+    },
+  )
+  const data = await response.json()
+  assert.equal(data.choices[0].message.content, "plain answer")
+  assert.equal(seen.length, 1)
+  assert.equal(seen[0].tools.length, 1)
+  assert.equal(seen[0].tools[0].function.name, "eval")
+  assert.match(seen[0].messages[0].content, /^You are a living Common Lisp image/)
+})
+
+test("tool_choice none keeps the transcript bridge", async () => {
+  const seen = []
+  const fetchImpl = async (_input, init) => {
+    seen.push(JSON.parse(init.body))
+    return jsonResponse({
+      choices: [{ index: 0, message: { role: "assistant", content: "no tools" }, finish_reason: "stop" }],
+    })
+  }
+  await makeFetch({ free: true, fetchImpl, evalRunner: async () => "unused" })(
+    "https://api.nodecode.ai/v1/chat/completions",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        model: "nodecode-cyber-v1",
+        messages: [{ role: "user", content: "say hi" }],
+        tool_choice: "none",
+      }),
+    },
+  )
+  assert.equal(seen.length, 1)
+  assert.equal(seen[0].tools, undefined)
+})
+
+test("a tiny max_tokens keeps the transcript bridge", async () => {
+  const seen = []
+  const fetchImpl = async (_input, init) => {
+    seen.push(JSON.parse(init.body))
+    return jsonResponse({
+      choices: [{ index: 0, message: { role: "assistant", content: "ok" }, finish_reason: "stop" }],
+    })
+  }
+  await makeFetch({ free: true, fetchImpl, evalRunner: async () => "unused" })(
+    "https://api.nodecode.ai/v1/chat/completions",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        model: "nodecode-cyber-v1",
+        messages: [{ role: "user", content: "say ok" }],
+        max_tokens: 16,
+      }),
+    },
+  )
+  assert.equal(seen.length, 1)
+  assert.equal(seen[0].tools, undefined)
+})
+
 test("handleEvalRequest allows more than six eval rounds", async () => {
   let round = 0
   const fetchImpl = async () => {
