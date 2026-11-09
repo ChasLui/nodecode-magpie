@@ -429,6 +429,9 @@ rm -rf "$SB"
 - [x] GitHub Release `v0.5.0`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.5.0）
 - [x] npm 0.5.0 真实 magpie 安装与跨宿主重启验证（2026-11-09：provider test free `1717 ms` / paid `3688 ms`；gateway 3425 定义 `nc-npm-hist` 后重启插件宿主，再调 `(nc-npm-hist 1)` 返回 `2001`，200/9233ms）
 - [x] 0.5.1 原生 Lisp `(look ...)` 桥本地验证（2026-11-09：`npm test` 64/64；直接 `EvalServer` 的 `(look "/tmp/pic.png" :prompt "read")` 返回 stub 文本；gateway 3425 free lane 用 `(look "/tmp/nc-look-word.png" ...)` 精确读出 `BANANA-COMET-31415`）
+- [x] npm 发布 `nodecode-magpie@0.5.1`（2026-11-09，GitHub Actions run `42631362571`；official registry `latest = 0.5.1`，tarball shasum `9553b9447b23578569a477411d24f118003b1c0f`）
+- [x] GitHub Release `v0.5.1`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.5.1）
+- [x] npm 0.5.1 真实 magpie 安装验证（2026-11-09：provider test free `3131 ms` / paid `1097 ms`；gateway 3425 free lane 用嵌套 `(concatenate 'string "X" (look ...))` 返回 `XBANANA-COMET-31415`，200/17.5s）
 - [x] GitHub Actions 发版流水线 `.github/workflows/release.yml`（tag `v*` 触发测试 + `npm publish --provenance`）
 - [x] GitHub Release `v0.1.0`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.1.0）
 - [x] GitHub Release `v0.1.1`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.1.1）
