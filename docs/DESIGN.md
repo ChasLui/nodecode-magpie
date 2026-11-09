@@ -412,6 +412,9 @@ rm -rf "$SB"
 - [x] GitHub Release `v0.4.1`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.4.1）
 - [x] npm 0.4.1 真实 magpie 安装验证（2026-11-09：provider test free `3197 ms` / paid `2018 ms`；gateway 3425 look 200/3.8s，读出 `SECRET-7QZ-9931`）
 - [x] 0.4.2 原生图片输入桥本地验证（2026-11-09：`npm test` 61/61；data URI 图片经 gateway 3425 200/2.2s 读出 `SECRET-7QZ-9931`；默认视觉模型路由返回 400 时回退到 `group/auto-deepseek-flash` 成功）
+- [x] npm 发布 `nodecode-magpie@0.4.2`（2026-11-09，GitHub Actions run `42611896262`；official registry `latest = 0.4.2`，tarball shasum `4d2d7924c26e25776894050a1f43cb209483de26`）
+- [x] GitHub Release `v0.4.2`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.4.2）
+- [x] npm 0.4.2 真实 magpie 安装验证（2026-11-09：provider test free `3058 ms` / paid `1324 ms`；gateway 3425 图片请求无 tools 200/814ms、带 tools 200/1161ms，均读出 `SECRET-7QZ-9931`）
 - [x] GitHub Actions 发版流水线 `.github/workflows/release.yml`（tag `v*` 触发测试 + `npm publish --provenance`）
 - [x] GitHub Release `v0.1.0`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.1.0）
 - [x] GitHub Release `v0.1.1`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.1.1）
