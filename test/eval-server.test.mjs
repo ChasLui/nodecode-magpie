@@ -33,10 +33,12 @@ function nodecodeBinary() {
 const binary = nodecodeBinary()
 const skip = binary ? false : "nodecode is not installed"
 
-test("makeServerForm injects the socket path instead of leaving a placeholder", () => {
-  const form = makeServerForm("/tmp/example/eval.sock")
+test("makeServerForm injects the eval and look socket paths", () => {
+  const form = makeServerForm("/tmp/example/eval.sock", "/tmp/example/look.sock")
   assert.doesNotMatch(form, /__MAGPIE_SOCKET__/)
+  assert.doesNotMatch(form, /__MAGPIE_LOOK_SOCKET__/)
   assert.match(form, /"\/tmp\/example\/eval\.sock"/)
+  assert.match(form, /"\/tmp\/example\/look\.sock"/)
 })
 
 test("definitions survive across eval calls", { skip }, async () => {
@@ -120,4 +122,27 @@ test("a snippet keeps the CLI's per-form => lines and * / history", { skip }, as
   assert.equal(multi, "=> 3\n=> 7")
   assert.equal(await runEvalForm("*", { env, yieldMs: 5_000 }), "7")
   assert.equal(await runEvalForm('(format nil "~s" /)', { env, yieldMs: 5_000 }), "(7)")
+})
+
+
+test("a form can call (look ...) and reach the vision handler", { skip }, async () => {
+  const env = { ...process.env, NODECODE_BIN: binary }
+  const seen = []
+  const defined = await runEvalForm('(defun look-probe (x) (+ x 1))', { env, sessionId: "look-probe" })
+  assert.match(defined, /LOOK-PROBE/)
+  const called = await runEvalForm('(look-probe 41)', { env, sessionId: "look-probe" })
+  assert.match(called, /42/)
+  const result = await runEvalForm('(list "before" (look "/tmp/pic.png" :prompt "read the card"))', {
+    env,
+    sessionId: "look-probe",
+    lookRunner: async (args) => {
+      seen.push(args)
+      return "LOOK-LISP-OK"
+    },
+  })
+  assert.match(result, /LOOK-LISP-OK/)
+  assert.equal(seen.length, 1)
+  assert.equal(seen[0].path, "/tmp/pic.png")
+  assert.equal(seen[0].prompt, "read the card")
+  await closeEvalServers()
 })

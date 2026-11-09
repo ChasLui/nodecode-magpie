@@ -15,6 +15,10 @@
 ;;;;   -> {"op":"interrupt","id":3,"force":false}
 ;;;;   -> {"op":"list"}
 ;;;;   -> {"op":"ping"}
+;;;;
+;;;; `(look ...)` inside the image is served by the plugin's vision model over a
+;;;; second Unix socket, so a form can use the CLI's native look verb instead of
+;;;; the (magpie-tool "look" ...) carrier.
 
 (progn
   (require :sb-bsd-sockets)
@@ -25,6 +29,7 @@
   ;; *eval-strings* and ($ "name") reads them.  Our service evaluates on its own
   ;; threads, so it must bind that special itself.
   (defvar *magpie-strings-symbol* (find-symbol "*EVAL-STRINGS*" :nodecode.evolved))
+  (defvar *magpie-look-socket* __MAGPIE_LOOK_SOCKET__)
 
   (defstruct (magpie-eval (:constructor %make-magpie-eval))
     id thread stream value error-p done-p started-at)
@@ -40,6 +45,34 @@
     "Take everything the evaluation has printed since the last look."
     (let ((stream (magpie-eval-stream ev)))
       (if stream (get-output-stream-string stream) "")))
+
+  (defun magpie-look (path &key prompt)
+    "Ask the plugin's vision model to describe PATH, from inside the image."
+    (if (or (null *magpie-look-socket*) (string= *magpie-look-socket* ""))
+        (error "look is not configured")
+        (let ((sock (make-instance 'sb-bsd-sockets:local-socket
+                                   :type :stream :protocol 0)))
+          (unwind-protect
+               (progn
+                 (sb-bsd-sockets:socket-connect sock *magpie-look-socket*)
+                 (with-open-stream
+                     (stream (sb-bsd-sockets:socket-make-stream
+                              sock :input t :output t :element-type 'character
+                              :buffering :full))
+                   (let ((request (magpie-json
+                                   (list (cons "path" (princ-to-string path))
+                                         (cons "prompt" (or prompt ""))))))
+                     (format stream "~a~%" (nlk:encode-json-object request))
+                     (finish-output stream)
+                     (let* ((line (read-line stream nil :eof))
+                            (response (and line (not (eq line :eof))
+                                           (nlk:decode-json line :whole t))))
+                       (cond ((null response)
+                              (error "look: no response from plugin"))
+                             ((gethash "ok" response)
+                              (gethash "text" response))
+                             (t (error "look: ~a" (gethash "error" response))))))))
+            (ignore-errors (sb-bsd-sockets:socket-close sock))))))
 
   (defun magpie-start (form-text &optional strings)
     (let* ((id (incf *magpie-seq*))
@@ -164,7 +197,16 @@ Returns readable text, the same lane as every other eval answer."
             (dolist (row rows)
               (format out "~a  ~a~%" (first row) (second row)))))))
 
+  ;; eval-string reads bare symbols in NODECODE.EVOLVED.  `nodecode trial`
+  ;; installs the engine's own LOOK after this file is read, so swap it on every
+  ;; eval (cheap, idempotent) right before eval-string sees the form.
+  (defun magpie-install-look ()
+    (let ((look-symbol (find-symbol "LOOK" :nodecode.evolved)))
+      (when look-symbol
+        (setf (symbol-function look-symbol) (symbol-function 'magpie-look)))))
+
   (defun magpie-op-eval (request)
+    (magpie-install-look)
     (let* ((form (gethash "form" request))
            (yield-ms (or (gethash "yield_time_ms" request) 10000))
            (ev (magpie-start form (gethash "strings" request))))

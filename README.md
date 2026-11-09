@@ -55,7 +55,7 @@ magpie plugins add /abs/path/to/nodecode-magpie
 From npm (published package):
 
 ```sh
-magpie plugins add npm:nodecode-magpie@0.5.0
+magpie plugins add npm:nodecode-magpie@0.5.1
 ```
 
 If the configured npm mirror has not caught up yet, point Bun at the official
@@ -63,13 +63,13 @@ registry for this one command:
 
 ```sh
 NPM_CONFIG_REGISTRY=https://registry.npmjs.org \
-  magpie plugins add npm:nodecode-magpie@0.5.0
+  magpie plugins add npm:nodecode-magpie@0.5.1
 ```
 
 From a git tag:
 
 ```sh
-magpie plugins add github:ChasLui/nodecode-magpie#v0.5.0
+magpie plugins add github:ChasLui/nodecode-magpie#v0.5.1
 ```
 
 `magpie plugins add` restarts the plugin host. Local-path plugins are loaded in place,
@@ -222,15 +222,23 @@ each session/subagent gets a separate image and definition scope. These headers 
 never forwarded to NodeCode.
 
 **`(look …)` is bridged through a vision model.** The free model is text-only,
-so NodeCode's own Lisp `look` refuses with *"deepseek-v4-flash-free reads text
-only"*.  The plugin provides the same capability through a client helper:
+so NodeCode's own `look` would refuse with *"reads text only"*.  The plugin
+serves `look` from inside the image over a private socket, so the CLI form works
+directly:
+
+```lisp
+(look "screenshot.png" :prompt "read the error dialog")
+```
+
+It also works nested, e.g. `(list "before" (look "chart.png"))`. The old client
+carrier remains supported:
 
 ```json
 {"form": "(magpie-tool \"look\" \"{\\\"path\\\":\\\"screenshot.png\\\",\\\"prompt\\\":\\\"read the error dialog\\\"}\")"}
 ```
 
-The helper reads a local PNG/JPEG/GIF/WebP (up to 5 MiB), sends it to a vision
-model on the magpie gateway, and returns the description as the tool result.
+Either form reads a local PNG/JPEG/GIF/WebP (up to 5 MiB), sends it to a vision
+model on the magpie gateway, and returns the description as the eval result.
 The default is `group/auto-deepseek-flash`, with `auto/gpt-6.1-sol` and
 `auto/gemini-3.8-flash` as fallbacks; set `NODECODE_VISION_MODEL` to pin one
 model instead.  The gateway is derived from `MAGPIE_ADDR` (usually

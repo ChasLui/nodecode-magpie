@@ -2,7 +2,7 @@
 
 > 目标：在 magpie 中提供两个 NodeCode 供应商：`nodecode`（付费 key，完整工具、1M context）与 `nodecode-free`（免费 key，仅 `nodecode-cyber-v1`、256K context；用 NodeCode 原生 `eval` tool + 本地持久 Lisp image 释放与 CLI 相同的工具能力）。
 >
-> 版本：0.5.0（2026-11-09）。magpie 宿主契约按 0.1.3240 核对。
+> 版本：0.5.1（2026-11-09）。magpie 宿主契约按 0.1.3240 核对。
 
 ## 1. 结论：为什么必须写插件
 
@@ -51,7 +51,7 @@ https://api.nodecode.ai/v1/chat/completions
 
 | 维度 | `nodecode` | `nodecode-free` |
 | --- | --- | --- |
-| User-Agent | `nodecode-magpie/0.5.0`（诚实） | `nodecode_cli/<version> (<OS> <release>; <arch>) <TERM>` |
+| User-Agent | `nodecode-magpie/0.5.1`（诚实） | `nodecode_cli/<version> (<OS> <release>; <arch>) <TERM>` |
 | body（有 tools） | 原样转发 | 单 `eval` tool + Lisp 前缀 + 工具目录；本地执行 eval，client tools 走 `(magpie-tool ...)` |
 | body（无 tools） | 原样转发 | 单轮化；删除 tools 五件套；需要时注入 JSON 工具协议 |
 | 路由 | 由模型 API 决定 | 只允许 `/chat/completions`，否则本地抛错 |
@@ -115,7 +115,7 @@ https://api.nodecode.ai/v1/chat/completions
 
 免费 key 的 `tools` 检查实际上把「无 tools」也限制成单轮：`[system,user]` 和 `[user]` 通过；`[user,user]`、`[system,user,user]`、`[user,assistant]`、`[assistant,user]` 全部 403 `free_needs_nodecode`，message 指向 `tools`。真实 agent 每轮都会带完整历史，所以旧版「只删 tools」的实现会在第二轮开始全部失败。
 
-0.2.0 起分两条路（0.3.0 起 eval 语义与 CLI 对齐；0.4.0 起按 workspace/session 隔离并支持 32 轮；0.4.1 起支持 look 视觉桥，0.4.2 起支持原生图片输入，0.5.0 起定义跨宿主重启保留）：**有 tools** 走 NodeCode 原生 `eval` tool（真正释放 CLI 能力），**无 tools** 才走 transcript 单轮化。
+0.2.0 起分两条路（0.3.0 起 eval 语义与 CLI 对齐；0.4.0 起按 workspace/session 隔离并支持 32 轮；0.4.1 起支持 look 视觉桥，0.4.2 起支持原生图片输入，0.5.0 起定义跨宿主重启保留；0.5.1 起 Lisp `(look ...)` 直接可用）：**有 tools** 走 NodeCode 原生 `eval` tool（真正释放 CLI 能力），**无 tools** 才走 transcript 单轮化。
 
 ### 4.2 带工具的 eval bridge
 
@@ -183,13 +183,13 @@ eval 工具可带 `strings` 对象；服务端用 `progv` 在线程内绑定 `no
 
 #### 4.2.8 look 视觉桥
 
-免费模型是纯文本的，NodeCode 内置 `(look ...)` 会以 *"reads text only"* 拒绝。插件把看图做成一个内部 client tool：
+免费模型是纯文本的，NodeCode 内置 `(look ...)` 会以 *"reads text only"* 拒绝。0.5.1 起插件在 image 里提供一个同名 `look`，通过私有 Unix socket 把请求送回插件：
 
-1. lane prompt 要求模型用 `(magpie-tool "look" "{\"path\":\"...\",\"prompt\":\"...\"}")`；
-2. `handleEvalRequest` 识别 `look`/`read_image`/`describe_image`，不把它交回 magpie；
-3. `lib/vision.mjs` 解析相对 workspace 的路径，校验 PNG/JPEG/GIF/WebP、≤5 MiB，转成 `data:` URI；
-4. POST 到 magpie gateway 的 `/v1/chat/completions`，默认按 `group/auto-deepseek-flash` → `auto/gpt-6.1-sol` → `auto/gemini-3.8-flash` 回退，返回的文本作为 tool result；
-5. 图片读取失败或视觉模型报错时，同样以 `ERROR: ...` 回喂，模型可以换路径或改问法。
+1. `lib/eval-server.lisp` 的 `magpie-look` 连接 `__MAGPIE_LOOK_SOCKET__`，发送 `{"path":...,"prompt":...}`，等待一行 JSON；
+2. `magpie-install-look` 在每次 eval 前把 `nodecode.evolved:look` 指向 `magpie-look`（`eval-string` 会重置引擎自带的 `LOOK`）；
+3. Node 侧 `EvalServer.startLookServer()` 接收请求，`lookHandler` 调 `lib/vision.mjs` 的 `describeImage`；
+4. `describeImage` 解析相对 workspace 的路径，校验 PNG/JPEG/GIF/WebP、≤5 MiB，转成 `data:` URI，POST 到 magpie gateway 的 `/v1/chat/completions`，默认按 `group/auto-deepseek-flash` → `auto/gpt-6.1-sol` → `auto/gemini-3.8-flash` 回退；
+5. 描述文本作为 `look` 的返回值（可直接嵌套在 `(list ...)` 等 form 中）；图片/视觉模型报错时以 `ERROR: ...` 回喂，模型可以换路径或改问法。旧 carrier `(magpie-tool "look" ...)` 仍由 `handleEvalRequest` 识别，保持兼容。
 
 配置：`NODECODE_VISION_MODEL`（锁定单个模型，覆盖默认回退链）、`NODECODE_VISION_BASE_URL`（默认 `MAGPIE_GATEWAY_URL` → `MAGPIE_ADDR` → `http://127.0.0.1:3425/v1`）、`NODECODE_VISION_API_KEY`（或已有的 `MAGPIE_GATEWAY_KEY`）、`NODECODE_VISION_TIMEOUT_MS`（默认 30s）。这条路径只把图片发给本机网关选中的视觉 provider，不会重新进入 `nodecode-free`，避免递归。
 
@@ -236,7 +236,7 @@ eval 工具可带 `strings` 对象；服务端用 `progv` 在线程内绑定 `no
 ### 4.5 已知边界
 
 - eval image 按 `(binary, workspace, session, subagent)` 隔离；主会话与子代理不共享定义（0.4.0 起）。
-- `(look ...)` 的 Lisp 形式仍会被 NodeCode 拒绝；免费档必须走 `(magpie-tool "look" ...)` 的内部视觉桥（0.4.1 起）。视觉桥依赖本机 magpie gateway 上有一个可用的图像模型。
+- 免费档的 Lisp `(look ...)` 在 tools/eval lane 直接可用（0.5.1 起，经私有 socket）；无 tools 的 transcript lane 无法执行 Lisp，只能处理请求里的原生图片 part。视觉桥依赖本机 magpie gateway 上有一个可用的图像模型。
 - 后台 eval 的 `output` 只在存活期间可读；已退出 eval 的结果保留在内存，服务重启即丢（与 CLI 的 log 落盘不同）。定义是例外：definition 形式的表单写入 `~/.nodecode-magpie/history/<hash>.jsonl`，新 image 启动时回放，使 `defun` 在插件宿主重启后仍可调用。
 - eval 以运行 magpie 的用户权限执行，拥有完整 host authority。
 - transcript bridge（无 tools）仍要求模型遵循 JSON 协议；不遵循时退化为普通文本，工具名必须在客户端 tools 列表中。
@@ -312,7 +312,7 @@ export const FREE_UA =
 npm test
 ```
 
-63 个测试（`test/rewrite.test.mjs` + `test/free-bridge.test.mjs` + `test/free-eval.test.mjs` + `test/eval-server.test.mjs` + `test/eval-history.test.mjs` + `test/vision.test.mjs`）：免费/付费请求改写、UA、路由拒绝、模型元数据、key 查找、config 深合并、usage 映射、transcript 单轮化、JSON 工具协议解析、native `tool_calls` 还原、SSE 合成、eval tool 请求、`(magpie-tool ...)` 解析、direct eval 本地执行循环、client tool 还原、`look` 视觉桥（路径/大小/格式校验、data URI 请求、错误回喂）、原生图片输入桥（data/http/file、4 张上限、失败降级）、视觉模型回退、定义历史（只保留 definition 形式、回放后跨 image 可用）。
+64 个测试（`test/rewrite.test.mjs` + `test/free-bridge.test.mjs` + `test/free-eval.test.mjs` + `test/eval-server.test.mjs` + `test/eval-history.test.mjs` + `test/vision.test.mjs`）：免费/付费请求改写、UA、路由拒绝、模型元数据、key 查找、config 深合并、usage 映射、transcript 单轮化、JSON 工具协议解析、native `tool_calls` 还原、SSE 合成、eval tool 请求、`(magpie-tool ...)` 解析、direct eval 本地执行循环、client tool 还原、`look` 视觉桥（路径/大小/格式校验、data URI 请求、错误回喂）、原生图片输入桥（data/http/file、4 张上限、失败降级）、视觉模型回退、定义历史（只保留 definition 形式、回放后跨 image 可用）。
 
 ### 6.2 真实 smoke test
 
@@ -389,7 +389,7 @@ rm -rf "$SB"
 ## 7. 风险与边界
 
 1. **厂商条款/封号风险（最重要）**：免费 key 文档要求只从 NodeCode CLI 使用；插件伪装 CLI UA 并桥接单轮限制属于规避客户端限制。不要把它当长期稳定方案。免费档只适合个人实验与轻量 agent；生产/编码 agent 请用付费档。
-2. **免费档的 eval bridge 是本地执行**：模型通过 NodeCode 的 `eval` tool 运行 Lisp/shell，拥有完整 host 权限；image 按 workspace/session 隔离，并在该会话存活期内保持。`(look ...)` 的 Lisp 形式不可用（纯文本模型），0.4.1 起改用内部 `look` 视觉桥；0.4.2 起原生图片输入也走视觉桥；后台 eval 与 `strings` 语义已在 0.3.0 与 CLI 对齐。无 tools 时的 transcript bridge 仍依赖模型遵循 JSON 协议。复杂/高风险任务建议付费档。
+2. **免费档的 eval bridge 是本地执行**：模型通过 NodeCode 的 `eval` tool 运行 Lisp/shell，拥有完整 host 权限；image 按 workspace/session 隔离，并在该会话存活期内保持。`(look ...)` 的 Lisp 形式在 0.5.1 起通过私有 socket 直接可用；0.4.1 的 carrier 与 0.4.2 的原生图片输入桥仍保留；后台 eval 与 `strings` 语义已在 0.3.0 与 CLI 对齐。无 tools 时的 transcript bridge 仍依赖模型遵循 JSON 协议。复杂/高风险任务建议付费档。
 3. **免费 key 限额**：仅 `nodecode-cyber-v1`、256K context、2 并发/账号、40 req/min、14 天内 3M tokens/24h、503 `free_capacity_busy`。
 4. **路由锁定**：免费档必须保持 chat-completions；用户改成 responses/anthropic 时插件本地拒绝。
 5. **key 轮换**：keyless 登录只读一次 key；CLI 轮换后需重新登录，或改用环境变量。
@@ -428,6 +428,7 @@ rm -rf "$SB"
 - [x] npm 发布 `nodecode-magpie@0.5.0`（2026-11-09，GitHub Actions run `42616441576`；official registry `latest = 0.5.0`，tarball shasum `34f59a3c97ca5bb0a71713f11b01c9ca58c8fb85`）
 - [x] GitHub Release `v0.5.0`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.5.0）
 - [x] npm 0.5.0 真实 magpie 安装与跨宿主重启验证（2026-11-09：provider test free `1717 ms` / paid `3688 ms`；gateway 3425 定义 `nc-npm-hist` 后重启插件宿主，再调 `(nc-npm-hist 1)` 返回 `2001`，200/9233ms）
+- [x] 0.5.1 原生 Lisp `(look ...)` 桥本地验证（2026-11-09：`npm test` 64/64；直接 `EvalServer` 的 `(look "/tmp/pic.png" :prompt "read")` 返回 stub 文本；gateway 3425 free lane 用 `(look "/tmp/nc-look-word.png" ...)` 精确读出 `BANANA-COMET-31415`）
 - [x] GitHub Actions 发版流水线 `.github/workflows/release.yml`（tag `v*` 触发测试 + `npm publish --provenance`）
 - [x] GitHub Release `v0.1.0`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.1.0）
 - [x] GitHub Release `v0.1.1`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.1.1）
