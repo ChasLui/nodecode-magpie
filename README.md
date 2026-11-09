@@ -55,13 +55,13 @@ magpie plugins add /abs/path/to/nodecode-magpie
 From npm (published package):
 
 ```sh
-magpie plugins add npm:nodecode-magpie@0.2.0
+magpie plugins add npm:nodecode-magpie@0.3.0
 ```
 
 From a git tag:
 
 ```sh
-magpie plugins add github:ChasLui/nodecode-magpie#v0.2.0
+magpie plugins add github:ChasLui/nodecode-magpie#v0.3.0
 ```
 
 `magpie plugins add` restarts the plugin host. Local-path plugins are loaded in place,
@@ -128,23 +128,69 @@ the four-line NodeCode Lisp prompt. The free lane meets that contract honestly:
    `LISP_PREFIX`, keeps the client's original system prompt, and appends a
    client-tool catalog plus the `(magpie-tool "name" "json")` convention.
 2. `lib/eval-runner.mjs` executes direct eval forms. It starts **one**
-   `nodecode trial` process and hosts a tiny Unix-socket Lisp REPL in it
-   (`lib/eval-server.mjs`), so definitions made by one eval call survive into
-   the next within the plugin process.
+   `nodecode trial` process and hosts a JSON-lines service inside it
+   (`lib/eval-server.mjs` + `lib/eval-server.lisp`), so definitions made by one
+   eval call survive into the next for the life of the plugin process.
 3. `handleEvalRequest` loops: direct eval results are appended as `tool`
    messages and sent back; a `(magpie-tool …)` call is returned to magpie as a
    native `tool_calls` response; streaming clients get a synthesized SSE stream.
 
 The result is the same tool surface as the NodeCode CLI: `(sh …)` for shell,
-`(write-file …)`, `(edit …)`, `(look …)`, plus persistent Lisp definitions.
-Examples:
+`(write-file …)`, `(edit …)`, plus persistent Lisp definitions. Examples:
 
 ```lisp
 (sh "git status --short")
 (write-file "/tmp/out.txt" "hello")
 (edit "/tmp/out.txt" "hello" "world")
-(progn (defun double (x) (* x 2)) (double 21))
+(defun double (x) (* x 2))
+(double 21)
 ```
+
+### Eval semantics match the CLI
+
+The snippet is handed to NodeCode's own `eval-string`, so the free lane behaves
+like the CLI rather than a re-implementation:
+
+- **one `=>` line per form**, the last value in full, `*` / `**` / `***` and
+  `/` / `//` / `///` carrying the previous snippets' values;
+- a failing form reports `ERROR in form i of n (forms 1-… evaluated and stand: …)`
+  and the forms before it stand — they are not replayed;
+- an unclosed one-line snippet is refused with the CLI's own paren message;
+- a lone multi-line string prints raw under a `[text: N lines, M characters]`
+  header, and `(sh …)` appends `[exit N]` for a non-zero status;
+- results cap at 32,000 characters.
+
+**Background evals.** `yield_time_ms` (default 10 s, at most 600 s) is a wait
+window, not a kill switch. A form still running when the window closes answers
+
+```
+[running in the background · eval id 3]
+```
+
+and keeps running in the image. The model polls it with the same helpers the
+CLI offers:
+
+```lisp
+(magpie-eval-status 3)
+(magpie-eval-await 3)              ; wait up to yield_ms
+(magpie-eval-await 3 :until-exit t)
+(magpie-eval-interrupt 3)          ; (magpie-eval-interrupt 3 :force t)
+```
+
+Each eval runs on its own Lisp thread, so a slow `(sh "sleep 20")` never blocks
+the next eval call, and interrupting one leaves the image and its definitions
+intact.
+
+**`strings`.** A form that needs quotes, backslashes or newlines can ship them
+beside the form and read them with `($ "name")`:
+
+```json
+{"form": "($ \"script\")", "strings": {"script": "echo \"hi\"\n"}}
+```
+
+**`(look …)` is unavailable in this lane.** The free model is text-only, so
+NodeCode's own `look` refuses with *"deepseek-v4-flash-free reads text only"*.
+Read images with the client's own tools instead; the lane prompt says so.
 
 ## Free lane: transcript bridge (no tools)
 
@@ -198,7 +244,7 @@ preserved.
   `/chat/completions`. Do not switch the model API to `responses` or
   `anthropic` for `nodecode-free`: the plugin rejects it with a clear error
   instead of sending an unsupported route.
-- The paid provider keeps the honest `nodecode-magpie/0.2.0` UA; only the free
+- The paid provider keeps the honest `nodecode-magpie/0.3.0` UA; only the free
   provider uses the `nodecode_cli/…` shape, because only the free gate needs it.
 - Known magpie 0.1.3240 limitation: plugin-model `tool_call` is not carried into
   the gateway model list, so `nodecode-free` may still appear tool-capable in
@@ -251,10 +297,12 @@ lib/nodecode.mjs          # key lookup, model metadata, fetch rewrite, usage
 lib/free-bridge.mjs       # transcript collapse + JSON tool protocol + SSE
 lib/free-eval.mjs         # native eval tool request/loop/response bridge
 lib/eval-runner.mjs       # nodecode trial runner (persistent + one-shot)
-lib/eval-server.mjs       # persistent Unix-socket Lisp REPL
+lib/eval-server.mjs       # persistent JSON-lines client for the Lisp service
+lib/eval-server.lisp      # the service itself: threads, yield, status, interrupt
 test/rewrite.test.mjs     # offline body/UA/config/usage tests
 test/free-bridge.test.mjs # transcript bridge protocol and streaming tests
 test/free-eval.test.mjs   # eval tool request/loop/client-tool tests
+test/eval-server.test.mjs # live image: persistence, concurrency, yield, strings
 ```
 ## License
 

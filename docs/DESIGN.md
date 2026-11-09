@@ -2,7 +2,7 @@
 
 > 目标：在 magpie 中提供两个 NodeCode 供应商：`nodecode`（付费 key，完整工具、1M context）与 `nodecode-free`（免费 key，仅 `nodecode-cyber-v1`、256K context；用 NodeCode 原生 `eval` tool + 本地持久 Lisp image 释放与 CLI 相同的工具能力）。
 >
-> 版本：0.2.0（2026-11-08）。magpie 宿主契约按 0.1.3240 核对。
+> 版本：0.3.0（2026-11-08）。magpie 宿主契约按 0.1.3240 核对。
 
 ## 1. 结论：为什么必须写插件
 
@@ -51,7 +51,7 @@ https://api.nodecode.ai/v1/chat/completions
 
 | 维度 | `nodecode` | `nodecode-free` |
 | --- | --- | --- |
-| User-Agent | `nodecode-magpie/0.2.0`（诚实） | `nodecode_cli/<version> (<OS> <release>; <arch>) <TERM>` |
+| User-Agent | `nodecode-magpie/0.3.0`（诚实） | `nodecode_cli/<version> (<OS> <release>; <arch>) <TERM>` |
 | body（有 tools） | 原样转发 | 单 `eval` tool + Lisp 前缀 + 工具目录；本地执行 eval，client tools 走 `(magpie-tool ...)` |
 | body（无 tools） | 原样转发 | 单轮化；删除 tools 五件套；需要时注入 JSON 工具协议 |
 | 路由 | 由模型 API 决定 | 只允许 `/chat/completions`，否则本地抛错 |
@@ -115,7 +115,7 @@ https://api.nodecode.ai/v1/chat/completions
 
 免费 key 的 `tools` 检查实际上把「无 tools」也限制成单轮：`[system,user]` 和 `[user]` 通过；`[user,user]`、`[system,user,user]`、`[user,assistant]`、`[assistant,user]` 全部 403 `free_needs_nodecode`，message 指向 `tools`。真实 agent 每轮都会带完整历史，所以旧版「只删 tools」的实现会在第二轮开始全部失败。
 
-0.2.0 起分两条路：**有 tools** 走 NodeCode 原生 `eval` tool（真正释放 CLI 能力），**无 tools** 才走 transcript 单轮化。
+0.2.0 起分两条路（0.3.0 起 eval 语义与 CLI 对齐）：**有 tools** 走 NodeCode 原生 `eval` tool（真正释放 CLI 能力），**无 tools** 才走 transcript 单轮化。
 
 ### 4.2 带工具的 eval bridge
 
@@ -148,10 +148,39 @@ https://api.nodecode.ai/v1/chat/completions
 
 #### 4.2.4 本地执行器
 
-- `lib/eval-runner.mjs`：默认使用**持久** `nodecode trial` 进程 + Unix socket Lisp REPL（`lib/eval-server.mjs`）；失败时退回 one-shot trial。
+- `lib/eval-runner.mjs`：默认使用**持久** `nodecode trial` 进程 + JSON-lines 服务（`lib/eval-server.mjs` 客户端 + `lib/eval-server.lisp` 服务端）；失败时退回 one-shot trial。
 - 持久进程让 `(defun ...)`、已加载 fasl、`(write-file ...)` 等状态跨 eval 调用保留，接近 CLI 的 image 语义。
+- 每个 form 在服务端用 `sb-thread:make-thread` 独立线程执行：慢 form 不阻塞后续请求，超时/中断只影响该 form，image 与定义存活。
+- 请求带 `req_id`，Node 侧用 pending Map 匹配；socket 关闭或子进程退出即标记该 image 死亡，下次调用重建，不会把死连接当活连接用。
 - `(sh ...)`、`(edit ...)`、`(write-file ...)`、`(look ...)` 都是 NodeCode 内置 eval helper；直接 eval 的返回值经 JSON line 返回。
-- 每个 plugin 进程一个 image，按 cwd 复用；不是每个 magpie 会话一个 image。
+- 每个 plugin 进程一个 image，按 `binary + cwd + NODECODE_HOME` 复用；不是每个 magpie 会话一个 image。
+
+#### 4.2.5 与 CLI 对齐的 snippet 语义
+
+snippet 整段交给 `eval-string`，不再包 `(progn ...)`，因此保留 CLI 的：
+
+- 每 form 一行 `=>`，最后一个值完整打印，前面的值一行；
+- `*` / `**` / `***` 与 `/` / `//` / `///` 历史；
+- 失败 form 报 `ERROR in form i of n (forms 1-… evaluated and stand: …)`，前面 form 的效果保留、不重放；
+- 单行 snippet 少右括号时按 CLI 原文拒绝；
+- 多行字符串结果在 `[text: N lines, M characters]` 头下裸文本输出；`(sh ...)` 非零退出追加 `[exit N]`；
+- 结果上限 32,000 字符。
+
+#### 4.2.6 后台 eval 与 yield
+
+`yield_time_ms`（默认 10,000，上限 600,000）是**等待窗口**而不是 kill 开关：
+
+- 窗口内结束 → 返回 `exited` 结果；
+- 窗口到期 → 返回 `[running in the background · eval id N]`，form 继续在 image 内运行；
+- 模型用 `(magpie-eval-status N)`、`(magpie-eval-await N [:until-exit t])`、`(magpie-eval-interrupt N [:force t])` 轮询/等待/中断。
+
+这与官方 `exec.lisp` 的语义一致（官方用后台进程 + exec registry，我们用 Lisp 线程 + socket），差别只在实现机制。
+
+#### 4.2.7 strings 通道
+
+eval 工具可带 `strings` 对象；服务端用 `progv` 在线程内绑定 `nodecode.evolved::*eval-strings*`，`($ "name")` 即可取到。用于引号、反斜杠、换行多的文本，避免 Lisp 转义。
+
+`(look ...)` 在免费档不可用：`deepseek-v4-flash-free` 是纯文本模型，NodeCode 自己会拒绝并提示 `select-model`。lane prompt 已说明改用客户端工具读图。
 
 ### 4.3 transcript 请求改写
 
@@ -185,8 +214,8 @@ https://api.nodecode.ai/v1/chat/completions
 ### 4.5 已知边界
 
 - eval bridge 的 image 由同一 plugin 进程内所有 magpie 会话共享；跨会话 definitions 会互相可见。
-- `(look ...)` 的图片附件不会作为 image content 转发；只返回文本结果。
-- `yield_time_ms` 目前作为本地超时使用，不是 NodeCode CLI 的后台 eval 调度。
+- `(look ...)` 在免费档直接不可用（纯文本模型），需用客户端工具读图。
+- 后台 eval 的 `output` 只在存活期间可读；已退出 eval 的结果保留在内存，服务重启即丢（与 CLI 的 log 落盘不同）。
 - eval 以运行 magpie 的用户权限执行，拥有完整 host authority。
 - transcript bridge（无 tools）仍要求模型遵循 JSON 协议；不遵循时退化为普通文本，工具名必须在客户端 tools 列表中。
 - 合成 tool call id 不跨轮稳定；assistant 的 `reasoning` 不单独保留。
@@ -338,7 +367,7 @@ rm -rf "$SB"
 ## 7. 风险与边界
 
 1. **厂商条款/封号风险（最重要）**：免费 key 文档要求只从 NodeCode CLI 使用；插件伪装 CLI UA 并桥接单轮限制属于规避客户端限制。不要把它当长期稳定方案。免费档只适合个人实验与轻量 agent；生产/编码 agent 请用付费档。
-2. **免费档的 eval bridge 是本地执行**：模型通过 NodeCode 的 `eval` tool 运行 Lisp/shell，拥有完整 host 权限；image 在 plugin 进程内共享，`(look ...)` 图片与 `yield_time_ms` 后台语义尚未完全对齐。无 tools 时的 transcript bridge 仍依赖模型遵循 JSON 协议。复杂/高风险任务建议付费档。
+2. **免费档的 eval bridge 是本地执行**：模型通过 NodeCode 的 `eval` tool 运行 Lisp/shell，拥有完整 host 权限；image 在 plugin 进程内共享。`(look ...)` 在免费档不可用（纯文本模型）；后台 eval 与 `strings` 语义已在 0.3.0 与 CLI 对齐。无 tools 时的 transcript bridge 仍依赖模型遵循 JSON 协议。复杂/高风险任务建议付费档。
 3. **免费 key 限额**：仅 `nodecode-cyber-v1`、256K context、2 并发/账号、40 req/min、14 天内 3M tokens/24h、503 `free_capacity_busy`。
 4. **路由锁定**：免费档必须保持 chat-completions；用户改成 responses/anthropic 时插件本地拒绝。
 5. **key 轮换**：keyless 登录只读一次 key；CLI 轮换后需重新登录，或改用环境变量。
@@ -355,7 +384,7 @@ rm -rf "$SB"
 - [x] 真实 magpie 网关跑“免费纯聊天”与“付费工具调用”
 - [x] 免费档 transcript bridge：多轮、工具调用、tool result、流式全部真实通过
 - [x] Magpie GUI 供应商详情确认两个 provider、key、并发与模型均正确
-- [ ] 加 `magpie.icon`（可选）
+- [x] 加 `magpie.icon`（2026-11-09，官方 apple-icon.png；插件页与供应商页均显示）
 - [x] npm 发布 `nodecode-magpie@0.1.0`（2026-11-08，GitHub Actions run `42451605190`；带 provenance）
 - [x] npm 发布 `nodecode-magpie@0.1.1`（2026-11-08，GitHub Actions run `42457112278`；带 provenance；npm official registry `latest = 0.1.1`）
 - [x] npm 发布 `nodecode-magpie@0.2.0`（2026-11-08，GitHub Actions run `42463006012`；发布后约 20 分钟通过 npm 扫描，official registry `latest = 0.2.0`，tarball shasum `ae971e6a695c0a21ac64f8e2c5e5508c1a5b8d0f`）
