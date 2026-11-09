@@ -58,6 +58,14 @@ From npm (published package):
 magpie plugins add npm:nodecode-magpie@0.4.1
 ```
 
+If the configured npm mirror has not caught up yet, point Bun at the official
+registry for this one command:
+
+```sh
+NPM_CONFIG_REGISTRY=https://registry.npmjs.org \
+  magpie plugins add npm:nodecode-magpie@0.4.1
+```
+
 From a git tag:
 
 ```sh

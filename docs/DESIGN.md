@@ -406,8 +406,9 @@ rm -rf "$SB"
 - [x] npm 发布 `nodecode-magpie@0.4.0`（2026-11-09，GitHub Actions run `42560665859`；发布后约 18 分钟通过 npm 扫描，official registry `latest = 0.4.0`，tarball shasum `f64967b739a2a671bf126f6e66a93dbfdb65e45a`）
 - [x] GitHub Release `v0.4.0`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.4.0）
 - [x] 0.4.1 look 视觉桥本地验证（2026-11-09：`npm test` 54/54；`auto/deepseek-v4.1-flash` 实图读出 `SECRET-7QZ-9931`；真实 gateway 3425 200/6.6s）
-- [x] npm 发布 `nodecode-magpie@0.4.1`（2026-11-09，GitHub Actions run `42567596901`；CI tarball shasum `aff619acd2898d943938cd624dcdbd84842eb1cd`；发布后等待 npm 恶意软件扫描）
+- [x] npm 发布 `nodecode-magpie@0.4.1`（2026-11-09，GitHub Actions run `42567596901`；official registry `latest = 0.4.1`，tarball shasum `aff619acd2898d943938cd624dcdbd84842eb1cd`）
 - [x] GitHub Release `v0.4.1`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.4.1）
+- [x] npm 0.4.1 真实 magpie 安装验证（2026-11-09：provider test free `3197 ms` / paid `2018 ms`；gateway 3425 look 200/3.8s，读出 `SECRET-7QZ-9931`）
 - [x] GitHub Actions 发版流水线 `.github/workflows/release.yml`（tag `v*` 触发测试 + `npm publish --provenance`）
 - [x] GitHub Release `v0.1.0`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.1.0）
 - [x] GitHub Release `v0.1.1`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.1.1）
