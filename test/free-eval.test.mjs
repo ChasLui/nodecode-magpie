@@ -1,4 +1,7 @@
 import assert from "node:assert/strict"
+import { mkdtempSync, realpathSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import test from "node:test"
 
 import {
@@ -299,6 +302,111 @@ test("makeFetch uses the eval bridge for free requests with tools", async () => 
   assert.equal(seen[0].tools.length, 1)
   assert.equal(seen[0].tools[0].function.name, "eval")
   assert.match(seen[0].messages[0].content, /^You are a living Common Lisp image/)
+})
+
+test("makeFetch runs eval in the agent's workspace and session", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "nc-magpie-cwd-"))
+  const seen = []
+  let round = 0
+  const fetchImpl = async () => {
+    round += 1
+    if (round === 1) {
+      return jsonResponse({
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: "assistant",
+              content: null,
+              tool_calls: [
+                {
+                  id: "e1",
+                  type: "function",
+                  function: { name: "eval", arguments: JSON.stringify({ form: '(sh "pwd")' }) },
+                },
+              ],
+            },
+            finish_reason: "tool_calls",
+          },
+        ],
+      })
+    }
+    return jsonResponse({ choices: [{ index: 0, message: { content: "done" }, finish_reason: "stop" }] })
+  }
+  try {
+    await makeFetch({
+      free: true,
+      cwd: "/tmp",
+      fetchImpl,
+      evalRunner: async (form, options) => {
+        seen.push({ form, ...options })
+        return dir
+      },
+    })("https://api.nodecode.ai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "x-magpie-work-dir": dir,
+        "x-magpie-session": "s-magpie-test",
+        "x-magpie-subagent": "agent-7",
+      },
+      body: JSON.stringify({
+        model: "nodecode-cyber-v1",
+        messages: [{ role: "user", content: "where am I?" }],
+        tools: [readFile],
+      }),
+    })
+    assert.equal(seen.length, 1)
+    assert.equal(seen[0].form, '(sh "pwd")')
+    assert.equal(seen[0].cwd, realpathSync(dir))
+    assert.equal(seen[0].sessionId, "s-magpie-test::agent-7")
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("handleEvalRequest allows more than six eval rounds", async () => {
+  let round = 0
+  const fetchImpl = async () => {
+    round += 1
+    if (round <= 8) {
+      return jsonResponse({
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: "assistant",
+              content: null,
+              tool_calls: [
+                {
+                  id: `e${round}`,
+                  type: "function",
+                  function: { name: "eval", arguments: JSON.stringify({ form: "(+ 1 1)" }) },
+                },
+              ],
+            },
+            finish_reason: "tool_calls",
+          },
+        ],
+      })
+    }
+    return jsonResponse({ choices: [{ index: 0, message: { content: "done" }, finish_reason: "stop" }] })
+  }
+  const plan = makeEvalRequest(
+    { model: "nodecode-cyber-v1", messages: [{ role: "user", content: "keep going" }], tools: [readFile] },
+    [{ name: "read_file", description: "Read a text file", parameters: readFile.function.parameters }],
+  )
+  const response = await handleEvalRequest({
+    input: "https://api.nodecode.ai/v1/chat/completions",
+    init: { method: "POST" },
+    headers: new Headers({ "content-type": "application/json" }),
+    body: plan.body,
+    plan,
+    fetchImpl,
+    evalRunner: async () => "2",
+  })
+  const data = await response.json()
+  assert.equal(data.choices[0].message.content, "done")
+  assert.equal(round, 9)
 })
 
 test("messageCalls recovers an eval call written as text", () => {

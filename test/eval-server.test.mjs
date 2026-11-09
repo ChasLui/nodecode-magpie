@@ -40,6 +40,19 @@ test("definitions survive across eval calls", { skip }, async () => {
   await closeEvalServers()
 })
 
+test("session scopes do not share definitions", { skip }, async () => {
+  const env = { ...process.env, NODECODE_BIN: binary }
+  const defined = await runEvalForm("(defun magpie-scope-probe (x) (+ x 1))", {
+    env,
+    sessionId: "scope-test-a",
+  })
+  assert.match(defined, /MAGPIE-SCOPE-PROBE/)
+  assert.equal(await runEvalForm("(magpie-scope-probe 41)", { env, sessionId: "scope-test-a" }), "42")
+  const other = await runEvalForm("(magpie-scope-probe 41)", { env, sessionId: "scope-test-b" })
+  assert.match(other, /UNDEFINED-FUNCTION/)
+  await closeEvalServers()
+})
+
 test("a slow form does not block the next eval", { skip }, async () => {
   const env = { ...process.env, NODECODE_BIN: binary }
   const slow = runEvalForm('(progn (sleep 4) "slow-finished")', { env, timeoutMs: 30_000 })

@@ -55,13 +55,13 @@ magpie plugins add /abs/path/to/nodecode-magpie
 From npm (published package):
 
 ```sh
-magpie plugins add npm:nodecode-magpie@0.3.0
+magpie plugins add npm:nodecode-magpie@0.4.0
 ```
 
 From a git tag:
 
 ```sh
-magpie plugins add github:ChasLui/nodecode-magpie#v0.3.0
+magpie plugins add github:ChasLui/nodecode-magpie#v0.4.0
 ```
 
 `magpie plugins add` restarts the plugin host. Local-path plugins are loaded in place,
@@ -132,12 +132,17 @@ the four-line NodeCode Lisp prompt. The free lane meets that contract honestly:
    `LISP_PREFIX`, keeps the client's original system prompt, and appends a
    client-tool catalog plus the `(magpie-tool "name" "json")` convention.
 2. `lib/eval-runner.mjs` executes direct eval forms. It starts **one**
-   `nodecode trial` process and hosts a JSON-lines service inside it
-   (`lib/eval-server.mjs` + `lib/eval-server.lisp`), so definitions made by one
-   eval call survive into the next for the life of the plugin process.
-3. `handleEvalRequest` loops: direct eval results are appended as `tool`
-   messages and sent back; a `(magpie-tool …)` call is returned to magpie as a
-   native `tool_calls` response; streaming clients get a synthesized SSE stream.
+   `nodecode trial` process per `(binary, workspace, session, subagent)` and hosts a
+   JSON-lines service inside it (`lib/eval-server.mjs` +
+   `lib/eval-server.lisp`), so definitions made by one eval call survive into
+   the next for the life of that session. The plugin reads magpie's
+   `x-magpie-work-dir`, `x-magpie-session`, and `x-magpie-subagent` headers
+   (the host strips them before the vendor sees the request) and runs the
+   image with the agent's workspace as its working directory.
+3. `handleEvalRequest` loops up to 32 eval rounds per turn: direct eval results
+   are appended as `tool` messages and sent back; a `(magpie-tool …)` call is
+   returned to magpie as a native `tool_calls` response; streaming clients get
+   a synthesized SSE stream.
 
 The result is the same tool surface as the NodeCode CLI: `(sh …)` for shell,
 `(write-file …)`, `(edit …)`, plus persistent Lisp definitions. Examples:
@@ -191,6 +196,13 @@ beside the form and read them with `($ "name")`:
 ```json
 {"form": "($ \"script\")", "strings": {"script": "echo \"hi\"\n"}}
 ```
+
+**Workspace and session isolation.** The plugin reads
+`x-magpie-work-dir` (a validated directory, canonicalized with `realpath`),
+`x-magpie-session`, and `x-magpie-subagent` from the request headers that
+magpie supplies to provider plugins. Eval shells start in that workspace, and
+each session/subagent gets a separate image and definition scope. These headers are plugin-only; they are
+never forwarded to NodeCode.
 
 **`(look …)` is unavailable in this lane.** The free model is text-only, so
 NodeCode's own `look` refuses with *"deepseek-v4-flash-free reads text only"*.
@@ -248,7 +260,7 @@ preserved.
   `/chat/completions`. Do not switch the model API to `responses` or
   `anthropic` for `nodecode-free`: the plugin rejects it with a clear error
   instead of sending an unsupported route.
-- The paid provider keeps the honest `nodecode-magpie/0.3.0` UA; only the free
+- The paid provider keeps the honest `nodecode-magpie/0.4.0` UA; only the free
   provider uses the `nodecode_cli/…` shape, because only the free gate needs it.
 - Known magpie 0.1.3240 limitation: plugin-model `tool_call` is not carried into
   the gateway model list, so `nodecode-free` may still appear tool-capable in
