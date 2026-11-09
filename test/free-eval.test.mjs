@@ -680,3 +680,71 @@ test("handleEvalRequest normalizes a native look call before calling upstream", 
   const data = await response.json()
   assert.equal(data.choices[0].message.content, "native-look-done")
 })
+
+test("makeFetch describes image parts before a free request", async () => {
+  const seen = []
+  const fetchImpl = async (_input, init) => {
+    seen.push(JSON.parse(init.body))
+    return jsonResponse({ choices: [{ index: 0, message: { content: "done" }, finish_reason: "stop" }] })
+  }
+  const nodeFetch = makeFetch({
+    free: true,
+    cwd: "/tmp",
+    fetchImpl,
+    imageRunner: async () => "a screenshot with a login form",
+  })
+  const body = {
+    model: "whatever",
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "what is in this image?" },
+          { type: "image_url", image_url: { url: "data:image/png;base64,YQ==" } },
+        ],
+      },
+    ],
+  }
+  const response = await nodeFetch("https://api.nodecode.ai/v1/chat/completions", {
+    method: "POST",
+    body: JSON.stringify(body),
+  })
+  assert.equal(response.status, 200)
+  const text = JSON.stringify(seen[0])
+  assert.match(text, /a screenshot with a login form/)
+  assert.doesNotMatch(text, /image_url/)
+})
+
+test("makeFetch leaves image parts untouched for the paid provider", async () => {
+  const seen = []
+  const fetchImpl = async (_input, init) => {
+    seen.push(JSON.parse(init.body))
+    return jsonResponse({ choices: [{ index: 0, message: { content: "ok" }, finish_reason: "stop" }] })
+  }
+  const nodeFetch = makeFetch({
+    free: false,
+    cwd: "/tmp",
+    fetchImpl,
+    imageRunner: async () => {
+      throw new Error("paid requests must not use the free vision bridge")
+    },
+  })
+  const body = {
+    model: "nodecode-cyber-v1",
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "describe" },
+          { type: "image_url", image_url: { url: "https://example.test/a.png" } },
+        ],
+      },
+    ],
+  }
+  const response = await nodeFetch("https://api.nodecode.ai/v1/chat/completions", {
+    method: "POST",
+    body: JSON.stringify(body),
+  })
+  assert.equal(response.status, 200)
+  assert.equal(seen[0].messages[0].content[1].image_url.url, "https://example.test/a.png")
+})

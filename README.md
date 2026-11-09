@@ -5,7 +5,7 @@ Two magpie providers in one package:
 | Provider | Key | Context | Tools | Model |
 | --- | --- | --- | --- | --- |
 | `nodecode` | paid `sk-nc-…` | 1,048,576 | yes | `nodecode-cyber-v1` |
-| `nodecode-free` | free `sk-nc-…` | 262,144 | yes (bridged; `look` via vision model) | `nodecode-cyber-v1` |
+| `nodecode-free` | free `sk-nc-…` | 262,144 | yes (bridged; `look` and image input via vision model) | `nodecode-cyber-v1` |
 
 Both talk to `https://api.nodecode.ai/v1` over the OpenAI Chat Completions wire. The free lane bridges magpie's tool calls through NodeCode's own `eval` tool and a local persistent Lisp image — see below.
 
@@ -55,7 +55,7 @@ magpie plugins add /abs/path/to/nodecode-magpie
 From npm (published package):
 
 ```sh
-magpie plugins add npm:nodecode-magpie@0.4.1
+magpie plugins add npm:nodecode-magpie@0.4.2
 ```
 
 If the configured npm mirror has not caught up yet, point Bun at the official
@@ -63,13 +63,13 @@ registry for this one command:
 
 ```sh
 NPM_CONFIG_REGISTRY=https://registry.npmjs.org \
-  magpie plugins add npm:nodecode-magpie@0.4.1
+  magpie plugins add npm:nodecode-magpie@0.4.2
 ```
 
 From a git tag:
 
 ```sh
-magpie plugins add github:ChasLui/nodecode-magpie#v0.4.1
+magpie plugins add github:ChasLui/nodecode-magpie#v0.4.2
 ```
 
 `magpie plugins add` restarts the plugin host. Local-path plugins are loaded in place,
@@ -222,12 +222,21 @@ only"*.  The plugin provides the same capability through a client helper:
 
 The helper reads a local PNG/JPEG/GIF/WebP (up to 5 MiB), sends it to a vision
 model on the magpie gateway, and returns the description as the tool result.
-The default model is `auto/deepseek-v4.1-flash`; override with
-`NODECODE_VISION_MODEL`.  The gateway is derived from `MAGPIE_ADDR` (usually
+The default is `group/auto-deepseek-flash`, with `auto/gpt-6.1-sol` and
+`auto/gemini-3.8-flash` as fallbacks; set `NODECODE_VISION_MODEL` to pin one
+model instead.  The gateway is derived from `MAGPIE_ADDR` (usually
 `http://127.0.0.1:3425/v1`) and can be overridden with
 `NODECODE_VISION_BASE_URL`; `NODECODE_VISION_API_KEY` (or the gateway key
 already in `MAGPIE_GATEWAY_KEY`) and `NODECODE_VISION_TIMEOUT_MS` are also supported.  Relative paths resolve
 against the agent workspace.
+
+**Native image parts are bridged too.** When a client sends an OpenAI
+`image_url` / `input_image` part (data URL, http(s) URL, or file path) to the
+free lane, `lib/vision.mjs` describes it before the vendor request, so both the
+eval lane and the transcript lane receive text instead of an image. Up to four
+images per request, 5 MiB each; a failed description becomes
+`[image unavailable: …]` and the request still proceeds. Paid requests keep
+their native image parts unchanged.
 
 ## Free lane: transcript bridge (no tools)
 

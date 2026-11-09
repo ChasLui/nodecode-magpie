@@ -5,8 +5,11 @@ import { join } from "node:path"
 import test from "node:test"
 
 import {
+  bridgeImages,
   describeImage,
   imageMime,
+  imageSource,
+  parseDataUrl,
   parseLookArguments,
   readImage,
   resolveImagePath,
@@ -127,4 +130,115 @@ test("describeImage surfaces gateway errors", async () => {
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
+})
+
+test("imageSource accepts data URLs and rejects unsupported or oversized ones", () => {
+  const source = imageSource(`data:image/png;base64,${PNG.toString("base64")}`)
+  assert.equal(source.mime, "image/png")
+  assert.ok(source.dataUrl.startsWith("data:image/png;base64,"))
+  assert.equal(parseDataUrl("data:image/png;base64,YQ==").bytes, 1)
+  assert.throws(() => imageSource("data:text/plain;base64,YQ=="), /unsupported image type/)
+  assert.throws(() => imageSource("data:image/png;base64,YQ==", { maxBytes: 0 }), /exceeds 0 byte limit/)
+  assert.throws(() => imageSource(""), /no usable url or path/)
+})
+
+test("describeImage accepts a remote image URL without reading a file", async () => {
+  const seen = []
+  const text = await describeImage({
+    url: "https://example.test/a.png",
+    config: { baseUrl: "http://gateway.test/v1", model: "auto/vision", timeoutMs: 5000 },
+    fetchImpl: async (_url, init) => {
+      seen.push(JSON.parse(init.body))
+      return new Response(JSON.stringify({ choices: [{ message: { content: "remote image" } }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })
+    },
+  })
+  assert.equal(text, "remote image")
+  assert.equal(seen[0].messages[0].content[1].image_url.url, "https://example.test/a.png")
+})
+
+test("bridgeImages replaces image parts with descriptions in place", async () => {
+  const messages = [
+    { role: "system", content: "be helpful" },
+    {
+      role: "user",
+      content: [
+        { type: "text", text: "compare these" },
+        { type: "image_url", image_url: { url: "data:image/png;base64,YQ==" } },
+        { type: "input_image", image_url: "https://example.test/b.png" },
+      ],
+    },
+  ]
+  const seen = []
+  const result = await bridgeImages(messages, {
+    describe: async (args) => {
+      seen.push(args.url)
+      return seen.length === 1 ? "first image" : "second image"
+    },
+  })
+  assert.equal(result.images, 2)
+  assert.equal(result.failures, 0)
+  assert.equal(result.messages[0], messages[0])
+  assert.deepEqual(
+    result.messages[1].content.map((part) => part.type),
+    ["text", "text", "text"],
+  )
+  assert.match(result.messages[1].content[1].text, /first image/)
+  assert.match(result.messages[1].content[2].text, /second image/)
+  assert.deepEqual(seen, ["data:image/png;base64,YQ==", "https://example.test/b.png"])
+})
+
+test("bridgeImages caps the number of images and degrades failures", async () => {
+  const messages = [
+    {
+      role: "user",
+      content: [
+        { type: "image_url", image_url: { url: "data:image/png;base64,YQ==" } },
+        { type: "image_url", image_url: { url: "data:image/png;base64,Yg==" } },
+        { type: "image_url", image_url: { url: "data:image/png;base64,Yw==" } },
+      ],
+    },
+  ]
+  let call = 0
+  const result = await bridgeImages(messages, {
+    maxImages: 2,
+    describe: async () => {
+      call += 1
+      if (call === 1) throw new Error("model down")
+      return "ok"
+    },
+  })
+  assert.equal(result.images, 2)
+  assert.equal(result.failures, 1)
+  assert.match(result.messages[0].content[0].text, /unavailable: model down/)
+  assert.match(result.messages[0].content[1].text, /ok/)
+  assert.match(result.messages[0].content[2].text, /skipped: at most 2 images/)
+})
+
+test("describeImage falls back to the next vision model", async () => {
+  const seen = []
+  const text = await describeImage({
+    url: "https://example.test/a.png",
+    config: {
+      baseUrl: "http://gateway.test/v1",
+      model: "auto/primary",
+      models: ["auto/primary", "auto/fallback"],
+      timeoutMs: 5000,
+    },
+    fetchImpl: async (_url, init) => {
+      const body = JSON.parse(init.body)
+      seen.push(body.model)
+      if (body.model === "auto/primary") {
+        return new Response("no such model", { status: 400 })
+      }
+      return new Response(JSON.stringify({ choices: [{ message: { content: "fallback worked" } }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })
+    },
+  })
+  assert.equal(text, "fallback worked")
+  assert.deepEqual(seen, ["auto/primary", "auto/fallback"])
 })
