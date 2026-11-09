@@ -67,6 +67,10 @@ magpie plugins add github:ChasLui/nodecode-magpie#v0.3.0
 `magpie plugins add` restarts the plugin host. Local-path plugins are loaded in place,
 not copied; after editing, remove and re-add (or `magpie plugins update`) to restart.
 
+The package embeds NodeCode's official axolotl icon (`assets/nodecode-icon.png`) as a
+data URI in `package.json`, so magpie shows it on both the plugin and provider rows
+without fetching anything at runtime.
+
 ## Sign in
 
 The first method is `keyless: true` and reads a local key without prompting:

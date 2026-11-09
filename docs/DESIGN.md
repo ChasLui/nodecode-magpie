@@ -388,6 +388,9 @@ rm -rf "$SB"
 - [x] npm 发布 `nodecode-magpie@0.1.0`（2026-11-08，GitHub Actions run `42451605190`；带 provenance）
 - [x] npm 发布 `nodecode-magpie@0.1.1`（2026-11-08，GitHub Actions run `42457112278`；带 provenance；npm official registry `latest = 0.1.1`）
 - [x] npm 发布 `nodecode-magpie@0.2.0`（2026-11-08，GitHub Actions run `42463006012`；发布后约 20 分钟通过 npm 扫描，official registry `latest = 0.2.0`，tarball shasum `ae971e6a695c0a21ac64f8e2c5e5508c1a5b8d0f`）
+- [x] 0.3.0 eval 语义（`=>`/history/后台 yield/strings）真实 magpie 安装与 gateway 3425 验证（2026-11-09，free/paid chat、free client tool 往返、direct eval 均通过）
+- [x] npm 发布 `nodecode-magpie@0.3.0`（2026-11-09，GitHub Actions run `42551766609`；official registry `latest = 0.3.0`，tarball shasum `45c6f6ad154f93077280aeb5c9dfb3f5575482f4`）
+- [x] GitHub Release `v0.3.0`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.3.0）
 - [x] GitHub Actions 发版流水线 `.github/workflows/release.yml`（tag `v*` 触发测试 + `npm publish --provenance`）
 - [x] GitHub Release `v0.1.0`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.1.0）
 - [x] GitHub Release `v0.1.1`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.1.1）
