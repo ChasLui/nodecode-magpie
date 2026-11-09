@@ -433,6 +433,9 @@ rm -rf "$SB"
 - [x] GitHub Release `v0.5.1`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.5.1）
 - [x] npm 0.5.1 真实 magpie 安装验证（2026-11-09：provider test free `3131 ms` / paid `1097 ms`；gateway 3425 free lane 用嵌套 `(concatenate 'string "X" (look ...))` 返回 `XBANANA-COMET-31415`，200/17.5s）
 - [x] 0.5.2 无 tools 请求同样进 eval image 本地验证（2026-11-09：`npm test` 67/67；直连 NodeCode API 的无 tools 请求用 `(sh ...)` 写出 `/tmp/nc-notools-052.txt` 并读回 `notools-lane-ok`；gateway 3425 无 tools 请求写出 `/tmp/nc-gw-notools-052.txt`，200/3.1s；provider test free 回归 `2549 ms`——它带 `max_tokens:16`，按设计留在 transcript lane）
+- [x] npm 发布 `nodecode-magpie@0.5.2`（2026-11-09，GitHub Actions run `42636390029`；official registry `latest = 0.5.2`，tarball shasum `3d4c4779e6c7ca6ded46622790a5f05bd5d1e51f`）
+- [x] GitHub Release `v0.5.2`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.5.2）
+- [x] npm 0.5.2 真实 magpie 安装验证（2026-11-09：provider test free `1405 ms`（首次 10s 超时为代理瞬时）、paid `1886 ms`；gateway 3425 无 tools `(sh ...)` 写出 `/tmp/nc-gw-notools-052.txt` 200/5.3s；无 tools `(look "/tmp/nc-look-word.png" ...)` 精确返回 `BANANA-COMET-31415` 200/6.8s）
 - [x] GitHub Actions 发版流水线 `.github/workflows/release.yml`（tag `v*` 触发测试 + `npm publish --provenance`）
 - [x] GitHub Release `v0.1.0`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.1.0）
 - [x] GitHub Release `v0.1.1`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.1.1）
