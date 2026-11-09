@@ -424,6 +424,10 @@ rm -rf "$SB"
 - [x] npm 发布 `nodecode-magpie@0.4.2`（2026-11-09，GitHub Actions run `42611896262`；official registry `latest = 0.4.2`，tarball shasum `4d2d7924c26e25776894050a1f43cb209483de26`）
 - [x] GitHub Release `v0.4.2`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.4.2）
 - [x] npm 0.4.2 真实 magpie 安装验证（2026-11-09：provider test free `3058 ms` / paid `1324 ms`；gateway 3425 图片请求无 tools 200/814ms、带 tools 200/1161ms，均读出 `SECRET-7QZ-9931`）
+- [x] 0.5.0 定义历史本地验证（2026-11-09：`npm test` 63/63；`runEvalForm` 定义后 `dropEvalServer` 再调用仍返回 `1001`；history 文件只含 `defun`，不含 `sh` 副作用）
+- [x] npm 发布 `nodecode-magpie@0.5.0`（2026-11-09，GitHub Actions run `42616441576`；official registry `latest = 0.5.0`，tarball shasum `34f59a3c97ca5bb0a71713f11b01c9ca58c8fb85`）
+- [x] GitHub Release `v0.5.0`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.5.0）
+- [x] npm 0.5.0 真实 magpie 安装与跨宿主重启验证（2026-11-09：provider test free `1717 ms` / paid `3688 ms`；gateway 3425 定义 `nc-npm-hist` 后重启插件宿主，再调 `(nc-npm-hist 1)` 返回 `2001`，200/9233ms）
 - [x] GitHub Actions 发版流水线 `.github/workflows/release.yml`（tag `v*` 触发测试 + `npm publish --provenance`）
 - [x] GitHub Release `v0.1.0`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.1.0）
 - [x] GitHub Release `v0.1.1`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.1.1）
