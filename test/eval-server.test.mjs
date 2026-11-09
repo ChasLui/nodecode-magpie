@@ -6,12 +6,20 @@
 
 import test from "node:test"
 import assert from "node:assert/strict"
-import { existsSync } from "node:fs"
-import { homedir } from "node:os"
+import { existsSync, mkdtempSync, rmSync } from "node:fs"
+import { homedir, tmpdir } from "node:os"
 import { join } from "node:path"
 
 import { makeServerForm, closeEvalServers } from "../lib/eval-server.mjs"
 import { runEvalForm } from "../lib/eval-runner.mjs"
+
+// Keep the definition history out of the real home directory during tests.
+const historyDir = mkdtempSync(join(tmpdir(), "nodecode-magpie-history-"))
+process.env.NODECODE_MAGPIE_HISTORY = historyDir
+test.after(async () => {
+  await closeEvalServers()
+  rmSync(historyDir, { recursive: true, force: true })
+})
 
 function nodecodeBinary() {
   const candidates = [

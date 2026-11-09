@@ -2,7 +2,7 @@
 
 > 目标：在 magpie 中提供两个 NodeCode 供应商：`nodecode`（付费 key，完整工具、1M context）与 `nodecode-free`（免费 key，仅 `nodecode-cyber-v1`、256K context；用 NodeCode 原生 `eval` tool + 本地持久 Lisp image 释放与 CLI 相同的工具能力）。
 >
-> 版本：0.4.2（2026-11-09）。magpie 宿主契约按 0.1.3240 核对。
+> 版本：0.5.0（2026-11-09）。magpie 宿主契约按 0.1.3240 核对。
 
 ## 1. 结论：为什么必须写插件
 
@@ -51,7 +51,7 @@ https://api.nodecode.ai/v1/chat/completions
 
 | 维度 | `nodecode` | `nodecode-free` |
 | --- | --- | --- |
-| User-Agent | `nodecode-magpie/0.4.2`（诚实） | `nodecode_cli/<version> (<OS> <release>; <arch>) <TERM>` |
+| User-Agent | `nodecode-magpie/0.5.0`（诚实） | `nodecode_cli/<version> (<OS> <release>; <arch>) <TERM>` |
 | body（有 tools） | 原样转发 | 单 `eval` tool + Lisp 前缀 + 工具目录；本地执行 eval，client tools 走 `(magpie-tool ...)` |
 | body（无 tools） | 原样转发 | 单轮化；删除 tools 五件套；需要时注入 JSON 工具协议 |
 | 路由 | 由模型 API 决定 | 只允许 `/chat/completions`，否则本地抛错 |
@@ -115,7 +115,7 @@ https://api.nodecode.ai/v1/chat/completions
 
 免费 key 的 `tools` 检查实际上把「无 tools」也限制成单轮：`[system,user]` 和 `[user]` 通过；`[user,user]`、`[system,user,user]`、`[user,assistant]`、`[assistant,user]` 全部 403 `free_needs_nodecode`，message 指向 `tools`。真实 agent 每轮都会带完整历史，所以旧版「只删 tools」的实现会在第二轮开始全部失败。
 
-0.2.0 起分两条路（0.3.0 起 eval 语义与 CLI 对齐；0.4.0 起按 workspace/session 隔离并支持 32 轮；0.4.1 起支持 look 视觉桥，0.4.2 起支持原生图片输入）：**有 tools** 走 NodeCode 原生 `eval` tool（真正释放 CLI 能力），**无 tools** 才走 transcript 单轮化。
+0.2.0 起分两条路（0.3.0 起 eval 语义与 CLI 对齐；0.4.0 起按 workspace/session 隔离并支持 32 轮；0.4.1 起支持 look 视觉桥，0.4.2 起支持原生图片输入，0.5.0 起定义跨宿主重启保留）：**有 tools** 走 NodeCode 原生 `eval` tool（真正释放 CLI 能力），**无 tools** 才走 transcript 单轮化。
 
 ### 4.2 带工具的 eval bridge
 
@@ -195,6 +195,15 @@ eval 工具可带 `strings` 对象；服务端用 `progv` 在线程内绑定 `no
 
 原生图片输入（0.4.2）：请求消息里的 OpenAI `image_url` / `input_image` part 在进入免费 vendor 前由 `bridgeImages` 替换为 `[image N: ...]` 文本，支持 data URL、http(s) URL、file:// 和相对 workspace 的路径；每请求最多 4 张、每张 ≤5 MiB。描述失败降级为 `[image unavailable: ...]`，请求继续；付费档保持原样。
 
+#### 4.2.9 定义历史
+
+`nodecode trial` 进程退出（插件宿主重启、网关重启、崩溃）会丢整个 image。为对齐 CLI 的 layer 语义，`lib/eval-server.mjs` 在每次成功启动的 form 中提取 definition 形式，按 session key 追加到 `~/.nodecode-magpie/history/<sha256(key)>.jsonl`（可用 `NODECODE_MAGPIE_HISTORY` 改目录）：
+
+- 只记录顶层 `defun`/`defvar`/`defparameter`/`defconstant`/`defmacro`/`defgeneric`/`defmethod`/`defsetf`/`defclass`/`defstruct`/`deftype`/`defpackage`/`define-*`；
+- 新 image 建好后在 `startPromise` 里按序回放（每个 form 15s 上限，失败忽略），因此 `defun` 在宿主重启后仍可调用；
+- `sh`/`edit`/`write-file` 等副作用形式不记录、不回放；值、`*`/`/` 历史与后台结果仍只在内存；
+- 历史上限 500 条，文件超过 1000 行时保留最后 1000 行。
+
 ### 4.3 transcript 请求改写
 
 `lib/free-bridge.mjs` 的 `rewriteFreeRequest(body)`：
@@ -228,7 +237,7 @@ eval 工具可带 `strings` 对象；服务端用 `progv` 在线程内绑定 `no
 
 - eval image 按 `(binary, workspace, session, subagent)` 隔离；主会话与子代理不共享定义（0.4.0 起）。
 - `(look ...)` 的 Lisp 形式仍会被 NodeCode 拒绝；免费档必须走 `(magpie-tool "look" ...)` 的内部视觉桥（0.4.1 起）。视觉桥依赖本机 magpie gateway 上有一个可用的图像模型。
-- 后台 eval 的 `output` 只在存活期间可读；已退出 eval 的结果保留在内存，服务重启即丢（与 CLI 的 log 落盘不同）。
+- 后台 eval 的 `output` 只在存活期间可读；已退出 eval 的结果保留在内存，服务重启即丢（与 CLI 的 log 落盘不同）。定义是例外：definition 形式的表单写入 `~/.nodecode-magpie/history/<hash>.jsonl`，新 image 启动时回放，使 `defun` 在插件宿主重启后仍可调用。
 - eval 以运行 magpie 的用户权限执行，拥有完整 host authority。
 - transcript bridge（无 tools）仍要求模型遵循 JSON 协议；不遵循时退化为普通文本，工具名必须在客户端 tools 列表中。
 - 合成 tool call id 不跨轮稳定；assistant 的 `reasoning` 不单独保留。
@@ -303,7 +312,7 @@ export const FREE_UA =
 npm test
 ```
 
-61 个测试（`test/rewrite.test.mjs` + `test/free-bridge.test.mjs` + `test/free-eval.test.mjs` + `test/eval-server.test.mjs` + `test/vision.test.mjs`）：免费/付费请求改写、UA、路由拒绝、模型元数据、key 查找、config 深合并、usage 映射、transcript 单轮化、JSON 工具协议解析、native `tool_calls` 还原、SSE 合成、eval tool 请求、`(magpie-tool ...)` 解析、direct eval 本地执行循环、client tool 还原、`look` 视觉桥（路径/大小/格式校验、data URI 请求、错误回喂）、原生图片输入桥（data/http/file、4 张上限、失败降级）、视觉模型回退。
+63 个测试（`test/rewrite.test.mjs` + `test/free-bridge.test.mjs` + `test/free-eval.test.mjs` + `test/eval-server.test.mjs` + `test/eval-history.test.mjs` + `test/vision.test.mjs`）：免费/付费请求改写、UA、路由拒绝、模型元数据、key 查找、config 深合并、usage 映射、transcript 单轮化、JSON 工具协议解析、native `tool_calls` 还原、SSE 合成、eval tool 请求、`(magpie-tool ...)` 解析、direct eval 本地执行循环、client tool 还原、`look` 视觉桥（路径/大小/格式校验、data URI 请求、错误回喂）、原生图片输入桥（data/http/file、4 张上限、失败降级）、视觉模型回退、定义历史（只保留 definition 形式、回放后跨 image 可用）。
 
 ### 6.2 真实 smoke test
 

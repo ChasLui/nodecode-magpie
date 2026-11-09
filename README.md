@@ -55,7 +55,7 @@ magpie plugins add /abs/path/to/nodecode-magpie
 From npm (published package):
 
 ```sh
-magpie plugins add npm:nodecode-magpie@0.4.2
+magpie plugins add npm:nodecode-magpie@0.5.0
 ```
 
 If the configured npm mirror has not caught up yet, point Bun at the official
@@ -63,13 +63,13 @@ registry for this one command:
 
 ```sh
 NPM_CONFIG_REGISTRY=https://registry.npmjs.org \
-  magpie plugins add npm:nodecode-magpie@0.4.2
+  magpie plugins add npm:nodecode-magpie@0.5.0
 ```
 
 From a git tag:
 
 ```sh
-magpie plugins add github:ChasLui/nodecode-magpie#v0.4.2
+magpie plugins add github:ChasLui/nodecode-magpie#v0.5.0
 ```
 
 `magpie plugins add` restarts the plugin host. Local-path plugins are loaded in place,
@@ -197,6 +197,15 @@ CLI offers:
 Each eval runs on its own Lisp thread, so a slow `(sh "sleep 20")` never blocks
 the next eval call, and interrupting one leaves the image and its definitions
 intact.
+
+**Definitions survive a plugin-host restart.** NodeCode's CLI keeps `defun` and
+friends in a layer; the free lane keeps the same definition forms in a
+per-session history file (`~/.nodecode-magpie/history/<hash>.jsonl`, override
+with `NODECODE_MAGPIE_HISTORY`) and replays them into a fresh image. Only
+definition heads (`defun`, `defvar`, `defparameter`, `defconstant`, `defmacro`,
+`defclass`, `defstruct`, `deftype`, `defpackage`, `define-*`, …) are replayed,
+so shell commands and other side effects never run twice. Values, `*` / `/`
+history and background results are still per-image and are not persisted.
 
 **`strings`.** A form that needs quotes, backslashes or newlines can ship them
 beside the form and read them with `($ "name")`:
