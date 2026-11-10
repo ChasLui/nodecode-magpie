@@ -472,6 +472,10 @@ rm -rf "$SB"
 - [x] npm 发布 `nodecode-magpie@0.6.0`（2026-11-10，GitHub Actions run `42764583561`；official registry `latest = 0.6.0`，tarball shasum `aa1a15d5a127e126087918a52145e39b8ebbd828`）
 - [x] GitHub Release `v0.6.0`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.6.0）
 - [x] 0.6.1 视觉缓存与重试本地验证（2026-11-10：`npm test` 75/75；gateway 3425 免费档对同一张 `/tmp/nc-look-cache.png` 连续两次 `(look ...)` 分别 12046ms（真实视觉调用）与 2313ms（缓存命中，结果同为 `CACHE-PROBE-777`）；把图片改写为 `CACHE-PROBE-888` 后再看分别为 3485ms（重新识别，未返回旧值）与 1291ms（再次命中））
+- [x] 0.6.2 eval id 跨重启可寻址本地验证（2026-11-10：`npm test` 75/75；真实插件宿主重启后 `(magpie-eval-status 7)` 返回 `eval 7: exited (from the log; this image did not run it)` + `value: bg-exit-062`，`(magpie-eval-status 999)` 返回 `unknown in this image` + `(magpie-eval-log)` 提示；重启后的第一个 eval 从 id 8 起，证明 id 由日志最大 id 续号）
+- [x] npm 发布 `nodecode-magpie@0.6.2`（2026-11-10，GitHub Actions run `42769150002`；official registry `latest = 0.6.2`，tarball shasum `f64da41f8a61a944670062a9ab7fe4485d4cb2fc`）
+- [x] GitHub Release `v0.6.2`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.6.2）
+- [x] npm 0.6.2 真实 magpie 安装验证（2026-11-10：provider test free `1442 ms`、paid `1523 ms`；gateway 3425 `(magpie-eval-status 7)` 返回日志记录 `bg-exit-062`，`(magpie-eval-list)` 显示新 image 的 id 从 8 开始）
 - [x] npm 发布 `nodecode-magpie@0.6.1`（2026-11-10，GitHub Actions run `42766521252`；official registry `latest = 0.6.1`，tarball shasum `96dd5d332eb91520ef12a349bc4234d372600085`）
 - [x] GitHub Release `v0.6.1`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.6.1）
 - [x] npm 0.6.1 真实 magpie 安装验证（2026-11-10：provider test free `1478 ms`、paid `1118 ms`；gateway 3425 免费档同一张 `/tmp/nc-look-cache.png` 两次 `(look ...)` 分别 30067ms（真实视觉调用）与 1117ms（缓存命中），结果一致）
