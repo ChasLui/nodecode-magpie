@@ -2,7 +2,7 @@
 
 > 目标：在 magpie 中提供两个 NodeCode 供应商：`nodecode`（付费 key，完整工具、1M context）与 `nodecode-free`（免费 key，仅 `nodecode-cyber-v1`、256K context；用 NodeCode 原生 `eval` tool + 本地持久 Lisp image 释放与 CLI 相同的工具能力）。
 >
-> 版本：0.6.3（2026-11-10）。magpie 宿主契约按 0.1.3240 核对。
+> 版本：0.6.4（2026-11-10）。magpie 宿主契约按 0.1.3240 核对。
 
 ## 1. 结论：为什么必须写插件
 
@@ -51,7 +51,7 @@ https://api.nodecode.ai/v1/chat/completions
 
 | 维度 | `nodecode` | `nodecode-free` |
 | --- | --- | --- |
-| User-Agent | `nodecode-magpie/0.6.3`（诚实） | `nodecode_cli/<version> (<OS> <release>; <arch>) <TERM>` |
+| User-Agent | `nodecode-magpie/0.6.4`（诚实） | `nodecode_cli/<version> (<OS> <release>; <arch>) <TERM>` |
 | body（有 tools） | 原样转发 | 单 `eval` tool + Lisp 前缀 + 工具目录；本地执行 eval，client tools 走 `(magpie-tool ...)` |
 | body（无 tools） | 原样转发 | 单轮化；删除 tools 五件套；需要时注入 JSON 工具协议 |
 | 路由 | 由模型 API 决定 | 只允许 `/chat/completions`，否则本地抛错 |
@@ -231,6 +231,8 @@ CLI 的约定是「后台输出只存活，exit 结果进 session log」。本�
 
 **`tool_choice:"none"` 也进 eval image。** 0.6.3 起，客户端明确拒绝工具调用时，免费档仍运行 Lisp image（模型可继续用 eval/sh/look 作为内部实现），但模型若请求一个 client 工具，插件在循环里回一条 `ERROR: client tool "…" is disabled by tool_choice:"none"; answer in text…` 的 tool result，然后继续到模型给出纯文本回答；响应保证 `tool_calls` 为空、`finish_reason:"stop"`。只有 `max_tokens < 256` 仍回退单轮 transcript 桥。
 
+**空闲 image 回收。** 每个 workspace/session/subagent 一个 `nodecode trial` 进程；宿主长期运行或大量子代理会累积 Lisp image。0.6.4 起 `EvalServer` 记录 `lastUsed`/`active`，模块级 60 秒定时器调用 `sweepIdleServers()`：超过 `NODECODE_MAGPIE_IDLE_MS`（默认 10 分钟，`0` 关闭）没有请求、且没有正在执行的 eval（`active === 0` 且 `pending.size === 0`）就关闭该 image 并从注册表移除。定义已在 history 文件里，下一次调用重建 image 并回放。正在运行但没人轮询的后台 eval 仍会随 image 一起被回收，其退出结果可能丢失——这是已知边界。
+
 **eval id 跨 image 单调。** 新 image 第一次分配 id 前先读日志里的最大 id 并接着往下数，因此上一个 image 的 `eval 3` 不会在新 image 里被另一个 eval 顶替。`(magpie-eval-status 3)` 查不到活动 eval 时按 id 在日志里找记录，找到就返回 `exited (from the log; this image did not run it)` 加记录内容；找不到才说 `unknown in this image` 并提示用 `(magpie-eval-log)`。日志被删除或裁剪到不含该 id 时，旧引用仍可能落到新 eval 上，这是已知边界。
 
 ### 4.3 transcript 请求改写
@@ -341,7 +343,7 @@ export const FREE_UA =
 npm test
 ```
 
-75 个测试（`test/rewrite.test.mjs` + `test/free-bridge.test.mjs` + `test/free-eval.test.mjs` + `test/eval-server.test.mjs` + `test/eval-history.test.mjs` + `test/vision.test.mjs`）：免费/付费请求改写、UA、路由拒绝、模型元数据、key 查找、config 深合并、usage 映射、transcript 单轮化、JSON 工具协议解析、native `tool_calls` 还原、SSE 合成、eval tool 请求、`(magpie-tool ...)` 解析、direct eval 本地执行循环、client tool 还原、`look` 视觉桥（路径/大小/格式校验、data URI 请求、错误回喂）、原生图片输入桥（data/http/file、4 张上限、失败降级）、视觉模型回退、定义历史（只保留 definition 形式、回放后跨 image 可用）、无 tools 请求进 eval image 与小 `max_tokens` 回退、`tool_choice:none` 保持 transcript、`deepseek-v4.1-flash`/`deepseek-flash` 别名在两侧都映射到 `nodecode-cyber-v1`。
+77 个测试（`test/rewrite.test.mjs` + `test/free-bridge.test.mjs` + `test/free-eval.test.mjs` + `test/eval-server.test.mjs` + `test/eval-history.test.mjs` + `test/vision.test.mjs` + `test/eval-idle.test.mjs`）：免费/付费请求改写、UA、路由拒绝、模型元数据、key 查找、config 深合并、usage 映射、transcript 单轮化、JSON 工具协议解析、native `tool_calls` 还原、SSE 合成、eval tool 请求、`(magpie-tool ...)` 解析、direct eval 本地执行循环、client tool 还原、`look` 视觉桥（路径/大小/格式校验、data URI 请求、错误回喂）、原生图片输入桥（data/http/file、4 张上限、失败降级）、视觉模型回退、定义历史（只保留 definition 形式、回放后跨 image 可用）、无 tools 请求进 eval image 与小 `max_tokens` 回退、`tool_choice:none` 仍进 eval image 但拒绝 client 工具、`deepseek-v4.1-flash`/`deepseek-flash` 别名在两侧都映射到 `nodecode-cyber-v1`、空闲 image 回收与定义回放、运行中的 eval 不被回收。
 
 ### 6.2 真实 smoke test
 

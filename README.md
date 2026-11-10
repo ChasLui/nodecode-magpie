@@ -66,7 +66,7 @@ magpie plugins add /abs/path/to/nodecode-magpie
 From npm (published package):
 
 ```sh
-magpie plugins add npm:nodecode-magpie@0.6.3
+magpie plugins add npm:nodecode-magpie@0.6.4
 ```
 
 If the configured npm mirror has not caught up yet, point Bun at the official
@@ -74,13 +74,13 @@ registry for this one command:
 
 ```sh
 NPM_CONFIG_REGISTRY=https://registry.npmjs.org \
-  magpie plugins add npm:nodecode-magpie@0.6.3
+  magpie plugins add npm:nodecode-magpie@0.6.4
 ```
 
 From a git tag:
 
 ```sh
-magpie plugins add github:ChasLui/nodecode-magpie#v0.6.3
+magpie plugins add github:ChasLui/nodecode-magpie#v0.6.4
 ```
 
 `magpie plugins add` restarts the plugin host. Local-path plugins are loaded in place,
@@ -218,6 +218,11 @@ definition heads (`defun`, `defvar`, `defparameter`, `defconstant`, `defmacro`,
 `defclass`, `defstruct`, `deftype`, `defpackage`, `define-*`, …) are replayed,
 so shell commands and other side effects never run twice. Values and `*` / `/`
 history are still per-image.
+
+An image is closed after 10 idle minutes (one per workspace/session/subagent),
+so a long-lived host or many subagents do not accumulate Lisp processes. Set
+`NODECODE_MAGPIE_IDLE_MS` to change the TTL (`0` disables eviction); an image
+with a running eval is never swept, and definitions replay on the next call.
 
 A background eval that finishes after its yield window appends its exit to a
 per-session log (`~/.nodecode-magpie/history/evals/<hash>.log`), and a rebuilt
