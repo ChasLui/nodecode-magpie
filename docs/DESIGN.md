@@ -460,6 +460,9 @@ rm -rf "$SB"
 - [x] npm 0.5.3 真实 magpie 安装验证（2026-11-10：`nodecode-free (NodeCode Free, 3 models)` / `nodecode (NodeCode, 3 models)` 均 signed in；`nodecode-free/deepseek-v4.1-flash` 无 tools 请求 200/4.5s 并写出 `alias-053-ok`；`nodecode/deepseek-flash` 200/1.3s）
 - [x] 0.6.0 后台 eval 结果日志本地验证（2026-11-10：`npm test` 70/70；新增用例断言后台 eval 退出写入 `history/evals/<hash>.log`、快速 form 不入日志、重启 image 后 `(magpie-eval-log)` 仍能读到、`(magpie-eval-list)` 提示历史条数）
 - [x] 0.6.0 真实插件宿主重启验证（2026-11-10：gateway 3425 免费档 `yield_time_ms 500` 起 `(progn (sh "sleep 6") "bg-exit-1045")` 后台 eval，日志写入 `~/.nodecode-magpie/history/evals/63ee1f4a1e341de881aae69f583c96f2.log`；kill 插件宿主（pid 33255 → 38245）后新 image 里 `(magpie-eval-log)` 原文返回该记录，200/4.5s）
+- [x] npm 发布 `nodecode-magpie@0.6.0`（2026-11-10，GitHub Actions run `42764583561`；official registry `latest = 0.6.0`，tarball shasum `aa1a15d5a127e126087918a52145e39b8ebbd828`）
+- [x] GitHub Release `v0.6.0`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.6.0）
+- [x] npm 0.6.0 真实 magpie 安装验证（2026-11-10：provider test free `1226 ms`、paid `1476 ms`；gateway 3425 免费档起 `(progn (sh "sleep 5") "bg-exit-npm060")` 后台 eval 200/2.4s，随后 `(magpie-eval-log)` 200/1.4s 同时返回换插件前的 `bg-exit-1045` 与新写入的 `bg-exit-npm060`）
 - [x] GitHub Actions 发版流水线 `.github/workflows/release.yml`（tag `v*` 触发测试 + `npm publish --provenance`）
 - [x] GitHub Release `v0.1.0`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.1.0）
 - [x] GitHub Release `v0.1.1`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.1.1）
