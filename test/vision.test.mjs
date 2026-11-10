@@ -1,20 +1,27 @@
 import assert from "node:assert/strict"
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import test from "node:test"
+import test, { beforeEach } from "node:test"
 
 import {
+  LOOK_CACHE_DEFAULT_SIZE,
   bridgeImages,
+  clearLookCache,
   describeImage,
   imageMime,
   imageSource,
   parseDataUrl,
   parseLookArguments,
+  lookCacheSize,
   readImage,
   resolveImagePath,
   visionConfig,
 } from "../lib/vision.mjs"
+
+// Descriptions are cached per (file, question) inside the module, so every
+// test starts from an empty cache.
+beforeEach(() => clearLookCache())
 
 const PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z1ZkAAAAASUVORK5CYII=",
@@ -241,4 +248,134 @@ test("describeImage falls back to the next vision model", async () => {
   })
   assert.equal(text, "fallback worked")
   assert.deepEqual(seen, ["auto/primary", "auto/fallback"])
+})
+
+
+test("lookCacheSize reads the cache switch and size", () => {
+  assert.equal(lookCacheSize({}), LOOK_CACHE_DEFAULT_SIZE)
+  assert.equal(lookCacheSize({ NODECODE_VISION_CACHE: "0" }), 0)
+  assert.equal(lookCacheSize({ NODECODE_VISION_CACHE: "off" }), 0)
+  assert.equal(lookCacheSize({ NODECODE_VISION_CACHE_SIZE: "4" }), 4)
+  assert.equal(lookCacheSize({ NODECODE_VISION_CACHE_SIZE: "9999" }), 512)
+})
+
+test("describeImage reuses a cached description until the file changes", async () => {
+  const dir = fixture()
+  clearLookCache()
+  let calls = 0
+  const fetchImpl = async () => {
+    calls += 1
+    return new Response(
+      JSON.stringify({ choices: [{ message: { content: `call ${calls}` } }] }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    )
+  }
+  const config = { baseUrl: "http://gateway.test/v1", model: "auto/vision", timeoutMs: 5000 }
+  try {
+    const first = await describeImage({ path: "pixel.png", cwd: dir, config, fetchImpl })
+    const second = await describeImage({ path: "pixel.png", cwd: dir, config, fetchImpl })
+    assert.equal(first, "call 1")
+    assert.equal(second, "call 1")
+    assert.equal(calls, 1, "same file and question must hit the cache")
+
+    const other = await describeImage({
+      path: "pixel.png",
+      cwd: dir,
+      prompt: "another question",
+      config,
+      fetchImpl,
+    })
+    assert.equal(other, "call 2", "a different question is a different entry")
+
+    const later = new Date(Date.now() + 2000)
+    utimesSync(join(dir, "pixel.png"), later, later)
+    const third = await describeImage({ path: "pixel.png", cwd: dir, config, fetchImpl })
+    assert.equal(third, "call 3", "a rewritten file must be described again")
+  } finally {
+    clearLookCache()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("describeImage honours config.cacheSize = 0", async () => {
+  const dir = fixture()
+  clearLookCache()
+  let calls = 0
+  const fetchImpl = async () => {
+    calls += 1
+    return new Response(JSON.stringify({ choices: [{ message: { content: "fresh" } }] }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    })
+  }
+  const config = { baseUrl: "http://gateway.test/v1", model: "auto/vision", timeoutMs: 5000, cacheSize: 0 }
+  try {
+    await describeImage({ path: "pixel.png", cwd: dir, config, fetchImpl })
+    await describeImage({ path: "pixel.png", cwd: dir, config, fetchImpl })
+    assert.equal(calls, 2)
+  } finally {
+    clearLookCache()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("describeImage retries a dropped connection once", async () => {
+  const dir = fixture()
+  clearLookCache()
+  let calls = 0
+  const fetchImpl = async () => {
+    calls += 1
+    if (calls === 1) throw new TypeError("fetch failed")
+    return new Response(JSON.stringify({ choices: [{ message: { content: "second try" } }] }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    })
+  }
+  const config = { baseUrl: "http://gateway.test/v1", model: "auto/vision", timeoutMs: 5000 }
+  try {
+    const text = await describeImage({ path: "pixel.png", cwd: dir, config, fetchImpl })
+    assert.equal(text, "second try")
+    assert.equal(calls, 2)
+  } finally {
+    clearLookCache()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("describeImage retries a 503 but not a 400", async () => {
+  const dir = fixture()
+  clearLookCache()
+  const statuses = []
+  const config = { baseUrl: "http://gateway.test/v1", model: "auto/vision", timeoutMs: 5000 }
+  try {
+    const flaky = async () => {
+      statuses.push("503")
+      if (statuses.length === 1) return new Response("starting up", { status: 503 })
+      return new Response(JSON.stringify({ choices: [{ message: { content: "after 503" } }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })
+    }
+    const text = await describeImage({ path: "pixel.png", cwd: dir, config, fetchImpl: flaky })
+    assert.equal(text, "after 503")
+    assert.equal(statuses.length, 2)
+
+    clearLookCache()
+    let bad = 0
+    await assert.rejects(
+      describeImage({
+        url: "https://example.test/never.png",
+        config,
+        fetchImpl: async () => {
+          bad += 1
+          return new Response("no such model", { status: 400 })
+        },
+      }),
+      /HTTP 400: no such model/,
+    )
+    assert.equal(bad, 1, "a permanent error must not be retried")
+  } finally {
+    clearLookCache()
+    rmSync(dir, { recursive: true, force: true })
+  }
 })

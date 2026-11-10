@@ -64,7 +64,7 @@ magpie plugins add /abs/path/to/nodecode-magpie
 From npm (published package):
 
 ```sh
-magpie plugins add npm:nodecode-magpie@0.6.0
+magpie plugins add npm:nodecode-magpie@0.6.1
 ```
 
 If the configured npm mirror has not caught up yet, point Bun at the official
@@ -72,13 +72,13 @@ registry for this one command:
 
 ```sh
 NPM_CONFIG_REGISTRY=https://registry.npmjs.org \
-  magpie plugins add npm:nodecode-magpie@0.6.0
+  magpie plugins add npm:nodecode-magpie@0.6.1
 ```
 
 From a git tag:
 
 ```sh
-magpie plugins add github:ChasLui/nodecode-magpie#v0.6.0
+magpie plugins add github:ChasLui/nodecode-magpie#v0.6.1
 ```
 
 `magpie plugins add` restarts the plugin host. Local-path plugins are loaded in place,
@@ -261,6 +261,13 @@ model instead.  The gateway is derived from `MAGPIE_ADDR` (usually
 `NODECODE_VISION_BASE_URL`; `NODECODE_VISION_API_KEY` (or the gateway key
 already in `MAGPIE_GATEWAY_KEY`) and `NODECODE_VISION_TIMEOUT_MS` are also supported.  Relative paths resolve
 against the agent workspace.
+
+Looking at the same unchanged file with the same question reuses the earlier
+description instead of paying for another vision call (rewriting the file, or
+asking a different question, describes it again). Set `NODECODE_VISION_CACHE=0`
+to turn the 32-entry cache off, or `NODECODE_VISION_CACHE_SIZE` to resize it. A
+gateway route that is briefly restarting (dropped connection, 429, 5xx) is
+retried once before the plugin moves on to the next model in the list.
 
 **Native image parts are bridged too.** When a client sends an OpenAI
 `image_url` / `input_image` part (data URL, http(s) URL, or file path) to the
