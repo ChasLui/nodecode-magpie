@@ -2,7 +2,7 @@
 
 > 目标：在 magpie 中提供两个 NodeCode 供应商：`nodecode`（付费 key，完整工具、1M context）与 `nodecode-free`（免费 key，仅 `nodecode-cyber-v1`、256K context；用 NodeCode 原生 `eval` tool + 本地持久 Lisp image 释放与 CLI 相同的工具能力）。
 >
-> 版本：0.6.1（2026-11-10）。magpie 宿主契约按 0.1.3240 核对。
+> 版本：0.6.2（2026-11-10）。magpie 宿主契约按 0.1.3240 核对。
 
 ## 1. 结论：为什么必须写插件
 
@@ -51,7 +51,7 @@ https://api.nodecode.ai/v1/chat/completions
 
 | 维度 | `nodecode` | `nodecode-free` |
 | --- | --- | --- |
-| User-Agent | `nodecode-magpie/0.6.1`（诚实） | `nodecode_cli/<version> (<OS> <release>; <arch>) <TERM>` |
+| User-Agent | `nodecode-magpie/0.6.2`（诚实） | `nodecode_cli/<version> (<OS> <release>; <arch>) <TERM>` |
 | body（有 tools） | 原样转发 | 单 `eval` tool + Lisp 前缀 + 工具目录；本地执行 eval，client tools 走 `(magpie-tool ...)` |
 | body（无 tools） | 原样转发 | 单轮化；删除 tools 五件套；需要时注入 JSON 工具协议 |
 | 路由 | 由模型 API 决定 | 只允许 `/chat/completions`，否则本地抛错 |
@@ -228,6 +228,8 @@ CLI 的约定是「后台输出只存活，exit 结果进 session log」。本�
 - 每个 form 的输出同时写进「可读流」和「日志流」：模型用 `(magpie-eval-status N)` 取走前者不会掏空日志；
 - eval 结束时（工作线程、看门线程或 `status` 查询任一路径）把 `--- eval N (background) --- / value / output` 追加到日志，幂等（`logged-p`）；
 - 日志超过 128 KiB 时只保留末尾 64 KiB（从记录边界切），新 image 用 `(magpie-eval-log [N])` 读取最后 N 条；`(magpie-eval-list)` 会在末尾提示日志里有 N 条历史退出。
+
+**eval id 跨 image 单调。** 新 image 第一次分配 id 前先读日志里的最大 id 并接着往下数，因此上一个 image 的 `eval 3` 不会在新 image 里被另一个 eval 顶替。`(magpie-eval-status 3)` 查不到活动 eval 时按 id 在日志里找记录，找到就返回 `exited (from the log; this image did not run it)` 加记录内容；找不到才说 `unknown in this image` 并提示用 `(magpie-eval-log)`。日志被删除或裁剪到不含该 id 时，旧引用仍可能落到新 eval 上，这是已知边界。
 
 ### 4.3 transcript 请求改写
 

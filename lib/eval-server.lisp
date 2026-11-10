@@ -30,6 +30,7 @@
 
   (defvar *magpie-evals* (make-hash-table :test 'eql))
   (defvar *magpie-seq* 0)
+  (defvar *magpie-seq-seeded* nil)
   ;; The eval tool ships named literals beside the form; NodeCode binds them in
   ;; *eval-strings* and ($ "name") reads them.  Our service evaluates on its own
   ;; threads, so it must bind that special itself.
@@ -84,7 +85,24 @@
                              (t (error "look: ~a" (gethash "error" response))))))))
             (ignore-errors (sb-bsd-sockets:socket-close sock))))))
 
+  (defun magpie-max-logged-id ()
+    "Highest eval id in the log, so ids keep increasing across images."
+    (when (and (stringp *magpie-eval-log-path*)
+               (plusp (length *magpie-eval-log-path*))
+               (probe-file *magpie-eval-log-path*))
+      (let ((highest 0))
+        (dolist (record (ignore-errors
+                         (magpie-log-records (uiop:read-file-string *magpie-eval-log-path*)))
+                         highest)
+          (let* ((head (first (uiop:split-string record :separator '(#\Newline))))
+                 (fields (uiop:split-string head :separator '(#\Space)))
+                 (id (ignore-errors (parse-integer (third fields) :junk-allowed t))))
+            (when (and id (> id highest)) (setf highest id)))))))
+
   (defun magpie-start (form-text &optional strings)
+    (unless *magpie-seq-seeded*
+      (setf *magpie-seq* (max *magpie-seq* (or (magpie-max-logged-id) 0)))
+      (setf *magpie-seq-seeded* t))
     (let* ((id (incf *magpie-seq*))
            (stream (make-string-output-stream))
            (log-stream (make-string-output-stream))
@@ -187,6 +205,16 @@
             for end = (or (cadr tail) (length text))
             collect (string-trim '(#\Newline #\Space) (subseq text start end)))))
 
+  (defun magpie-log-record (id)
+    "The logged exit block for EVAL ID, or NIL."
+    (when (and (stringp *magpie-eval-log-path*)
+               (plusp (length *magpie-eval-log-path*))
+               (probe-file *magpie-eval-log-path*))
+      (let ((prefix (format nil "--- eval ~a (" id))
+            (records (ignore-errors
+                      (magpie-log-records (uiop:read-file-string *magpie-eval-log-path*)))))
+        (find-if (lambda (record) (eql 0 (search prefix record))) records))))
+
   (defun magpie-eval-log (&optional (limit 20))
     "Background eval exits from this and earlier images, oldest first."
     (if (or (not (stringp *magpie-eval-log-path*))
@@ -224,7 +252,10 @@
 Returns readable text, the same lane as every other eval answer."
     (let ((ev (magpie-find id)))
       (if (null ev)
-          (format nil "eval ~a: unknown" id)
+          (let ((record (magpie-log-record id)))
+            (if record
+                (format nil "eval ~a: exited (from the log; this image did not run it)~%~a" id record)
+                (format nil "eval ~a: unknown in this image~%(if it ran before a restart, (magpie-eval-log) lists it)" id)))
           (let ((output (magpie-drain ev))
                 (done (magpie-eval-done-p ev)))
             (when done (magpie-log-eval ev))

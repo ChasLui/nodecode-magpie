@@ -64,7 +64,7 @@ magpie plugins add /abs/path/to/nodecode-magpie
 From npm (published package):
 
 ```sh
-magpie plugins add npm:nodecode-magpie@0.6.1
+magpie plugins add npm:nodecode-magpie@0.6.2
 ```
 
 If the configured npm mirror has not caught up yet, point Bun at the official
@@ -72,13 +72,13 @@ registry for this one command:
 
 ```sh
 NPM_CONFIG_REGISTRY=https://registry.npmjs.org \
-  magpie plugins add npm:nodecode-magpie@0.6.1
+  magpie plugins add npm:nodecode-magpie@0.6.2
 ```
 
 From a git tag:
 
 ```sh
-magpie plugins add github:ChasLui/nodecode-magpie#v0.6.1
+magpie plugins add github:ChasLui/nodecode-magpie#v0.6.2
 ```
 
 `magpie plugins add` restarts the plugin host. Local-path plugins are loaded in place,
@@ -221,6 +221,12 @@ A background eval that finishes after its yield window appends its exit to a
 per-session log (`~/.nodecode-magpie/history/evals/<hash>.log`), and a rebuilt
 image reads it with `(magpie-eval-log)`. The log is bounded (past 128 KiB only
 the newest 64 KiB is kept).
+
+Eval ids keep increasing across images (a new image starts after the highest id
+in the log), so an id from before a restart never names a different eval.
+`(magpie-eval-status 3)` for such an id answers from the log — `exited (from
+the log; this image did not run it)` plus the recorded value — instead of
+reporting an unknown eval.
 
 **`strings`.** A form that needs quotes, backslashes or newlines can ship them
 beside the form and read them with `($ "name")`:

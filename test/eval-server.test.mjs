@@ -149,7 +149,7 @@ test("a form can call (look ...) and reach the vision handler", { skip }, async 
   await closeEvalServers()
 })
 
-test("a finished background eval is logged for a later image", { skip }, async () => {
+test("a finished background eval stays addressable in a later image", { skip }, async () => {
   const env = { ...process.env, NODECODE_BIN: binary }
   const sessionId = "log-probe"
   const started = await runEvalForm('(progn (sleep 2) "log-probe-done")', {
@@ -178,6 +178,15 @@ test("a finished background eval is logged for a later image", { skip }, async (
   await closeEvalServers()
   const recalled = await runEvalForm("(magpie-eval-log)", { env, sessionId })
   assert.match(recalled, /log-probe-done/)
+  // Polling an id from before the restart resolves through the log.
+  const status = await runEvalForm("(magpie-eval-status 1)", { env, sessionId })
+  assert.match(status, /exited \(from the log/)
+  assert.match(status, /log-probe-done/)
+  const awaitedAgain = await runEvalForm("(magpie-eval-await 1 :until-exit t)", { env, sessionId })
+  assert.match(awaitedAgain, /log-probe-done/)
+  const missing = await runEvalForm("(magpie-eval-status 42)", { env, sessionId })
+  assert.match(missing, /unknown in this image/)
+  assert.match(missing, /magpie-eval-log/)
   const listed = await runEvalForm("(magpie-eval-list)", { env, sessionId })
   assert.match(listed, /magpie-eval-log/)
   await closeEvalServers()
