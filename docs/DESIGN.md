@@ -444,6 +444,10 @@ rm -rf "$SB"
 - [x] npm 发布 `nodecode-magpie@0.5.2`（2026-11-09，GitHub Actions run `42636390029`；official registry `latest = 0.5.2`，tarball shasum `3d4c4779e6c7ca6ded46622790a5f05bd5d1e51f`）
 - [x] GitHub Release `v0.5.2`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.5.2）
 - [x] npm 0.5.2 真实 magpie 安装验证（2026-11-09：provider test free `1405 ms`（首次 10s 超时为代理瞬时）、paid `1886 ms`；gateway 3425 无 tools `(sh ...)` 写出 `/tmp/nc-gw-notools-052.txt` 200/5.3s；无 tools `(look "/tmp/nc-look-word.png" ...)` 精确返回 `BANANA-COMET-31415` 200/6.8s）
+- [x] 0.5.3 模型别名本地验证（2026-11-10：`npm test` 69/69；两个 provider 各 3 models；`nodecode-free/deepseek-v4.1-flash` 无 tools 请求经 eval image 用 `sh` 写出 `/tmp/nc-alias053.txt`，`nodecode/deepseek-flash` 与 `nodecode/deepseek-v4.1-flash` 均 200）
+- [x] npm 发布 `nodecode-magpie@0.5.3`（2026-11-10，GitHub Actions run `42760736045`；official registry `latest = 0.5.3`，tarball shasum `99742dc84b3466fa94d512983162b94f70e05a14`）
+- [x] GitHub Release `v0.5.3`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.5.3）
+- [x] npm 0.5.3 真实 magpie 安装验证（2026-11-10：`nodecode-free (NodeCode Free, 3 models)` / `nodecode (NodeCode, 3 models)` 均 signed in；`nodecode-free/deepseek-v4.1-flash` 无 tools 请求 200/4.5s 并写出 `alias-053-ok`；`nodecode/deepseek-flash` 200/1.3s）
 - [x] GitHub Actions 发版流水线 `.github/workflows/release.yml`（tag `v*` 触发测试 + `npm publish --provenance`）
 - [x] GitHub Release `v0.1.0`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.1.0）
 - [x] GitHub Release `v0.1.1`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.1.1）
