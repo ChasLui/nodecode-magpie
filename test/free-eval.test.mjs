@@ -390,15 +390,34 @@ test("makeFetch gives a tool-less free request the eval image too", async () => 
   assert.match(seen[0].messages[0].content, /^You are a living Common Lisp image/)
 })
 
-test("tool_choice none keeps the transcript bridge", async () => {
+test("tool_choice none keeps the eval image but denies client tools", async () => {
   const seen = []
+  let round = 0
   const fetchImpl = async (_input, init) => {
     seen.push(JSON.parse(init.body))
+    round += 1
+    if (round === 1) {
+      return jsonResponse({
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: "assistant",
+              content: null,
+              tool_calls: [
+                { id: "call_read", type: "function", function: { name: "read_file", arguments: '{"path":"/tmp/x"}' } },
+              ],
+            },
+            finish_reason: "tool_calls",
+          },
+        ],
+      })
+    }
     return jsonResponse({
-      choices: [{ index: 0, message: { role: "assistant", content: "no tools" }, finish_reason: "stop" }],
+      choices: [{ index: 0, message: { role: "assistant", content: "answered without tools" }, finish_reason: "stop" }],
     })
   }
-  await makeFetch({ free: true, fetchImpl, evalRunner: async () => "unused" })(
+  const response = await makeFetch({ free: true, fetchImpl, evalRunner: async () => "unused" })(
     "https://api.nodecode.ai/v1/chat/completions",
     {
       method: "POST",
@@ -409,8 +428,16 @@ test("tool_choice none keeps the transcript bridge", async () => {
       }),
     },
   )
-  assert.equal(seen.length, 1)
-  assert.equal(seen[0].tools, undefined)
+  const data = await response.json()
+  assert.equal(data.choices[0].message.content, "answered without tools")
+  assert.equal(data.choices[0].finish_reason, "stop")
+  assert.equal(data.choices[0].message.tool_calls, undefined)
+  assert.equal(seen.length, 2)
+  assert.equal(seen[0].tools[0].function.name, "eval")
+  const denial = seen[1].messages.at(-1)
+  assert.equal(denial.role, "tool")
+  assert.match(denial.content, /disabled by tool_choice:"none"/)
+  assert.ok(seen[1].messages.some((m) => m.tool_calls?.some((c) => c.id === "call_read")))
 })
 
 test("a tiny max_tokens keeps the transcript bridge", async () => {

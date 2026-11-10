@@ -2,7 +2,7 @@
 
 > 目标：在 magpie 中提供两个 NodeCode 供应商：`nodecode`（付费 key，完整工具、1M context）与 `nodecode-free`（免费 key，仅 `nodecode-cyber-v1`、256K context；用 NodeCode 原生 `eval` tool + 本地持久 Lisp image 释放与 CLI 相同的工具能力）。
 >
-> 版本：0.6.2（2026-11-10）。magpie 宿主契约按 0.1.3240 核对。
+> 版本：0.6.3（2026-11-10）。magpie 宿主契约按 0.1.3240 核对。
 
 ## 1. 结论：为什么必须写插件
 
@@ -51,7 +51,7 @@ https://api.nodecode.ai/v1/chat/completions
 
 | 维度 | `nodecode` | `nodecode-free` |
 | --- | --- | --- |
-| User-Agent | `nodecode-magpie/0.6.2`（诚实） | `nodecode_cli/<version> (<OS> <release>; <arch>) <TERM>` |
+| User-Agent | `nodecode-magpie/0.6.3`（诚实） | `nodecode_cli/<version> (<OS> <release>; <arch>) <TERM>` |
 | body（有 tools） | 原样转发 | 单 `eval` tool + Lisp 前缀 + 工具目录；本地执行 eval，client tools 走 `(magpie-tool ...)` |
 | body（无 tools） | 原样转发 | 单轮化；删除 tools 五件套；需要时注入 JSON 工具协议 |
 | 路由 | 由模型 API 决定 | 只允许 `/chat/completions`，否则本地抛错 |
@@ -115,7 +115,7 @@ https://api.nodecode.ai/v1/chat/completions
 
 免费 key 的 `tools` 检查实际上把「无 tools」也限制成单轮：`[system,user]` 和 `[user]` 通过；`[user,user]`、`[system,user,user]`、`[user,assistant]`、`[assistant,user]` 全部 403 `free_needs_nodecode`，message 指向 `tools`。真实 agent 每轮都会带完整历史，所以旧版「只删 tools」的实现会在第二轮开始全部失败。
 
-0.2.0 起分两条路（0.3.0 起 eval 语义与 CLI 对齐；0.4.0 起按 workspace/session 隔离并支持 32 轮；0.4.1 起支持 look 视觉桥，0.4.2 起支持原生图片输入，0.5.0 起定义跨宿主重启保留；0.5.1 起 Lisp `(look ...)` 直接可用；0.5.2 起**无 tools 的请求默认也走 eval image**，只有 `tool_choice:"none"` 或 `max_tokens < 256` 才回退 transcript 单轮化）：有 tools（或无 tools 但回复预算足够）走 NodeCode 原生 `eval` tool（真正释放 CLI 能力）。
+0.2.0 起分两条路（0.3.0 起 eval 语义与 CLI 对齐；0.4.0 起按 workspace/session 隔离并支持 32 轮；0.4.1 起支持 look 视觉桥，0.4.2 起支持原生图片输入，0.5.0 起定义跨宿主重启保留；0.5.1 起 Lisp `(look ...)` 直接可用；0.5.2 起**无 tools 的请求默认也走 eval image**；0.6.3 起 `tool_choice:"none"` 也走 eval image（只是不把 client 工具交回），只有 `max_tokens < 256` 才回退 transcript 单轮化）：有 tools（或无 tools 但回复预算足够）走 NodeCode 原生 `eval` tool（真正释放 CLI 能力）。
 
 ### 4.2 带工具的 eval bridge
 
@@ -229,6 +229,8 @@ CLI 的约定是「后台输出只存活，exit 结果进 session log」。本�
 - eval 结束时（工作线程、看门线程或 `status` 查询任一路径）把 `--- eval N (background) --- / value / output` 追加到日志，幂等（`logged-p`）；
 - 日志超过 128 KiB 时只保留末尾 64 KiB（从记录边界切），新 image 用 `(magpie-eval-log [N])` 读取最后 N 条；`(magpie-eval-list)` 会在末尾提示日志里有 N 条历史退出。
 
+**`tool_choice:"none"` 也进 eval image。** 0.6.3 起，客户端明确拒绝工具调用时，免费档仍运行 Lisp image（模型可继续用 eval/sh/look 作为内部实现），但模型若请求一个 client 工具，插件在循环里回一条 `ERROR: client tool "…" is disabled by tool_choice:"none"; answer in text…` 的 tool result，然后继续到模型给出纯文本回答；响应保证 `tool_calls` 为空、`finish_reason:"stop"`。只有 `max_tokens < 256` 仍回退单轮 transcript 桥。
+
 **eval id 跨 image 单调。** 新 image 第一次分配 id 前先读日志里的最大 id 并接着往下数，因此上一个 image 的 `eval 3` 不会在新 image 里被另一个 eval 顶替。`(magpie-eval-status 3)` 查不到活动 eval 时按 id 在日志里找记录，找到就返回 `exited (from the log; this image did not run it)` 加记录内容；找不到才说 `unknown in this image` 并提示用 `(magpie-eval-log)`。日志被删除或裁剪到不含该 id 时，旧引用仍可能落到新 eval 上，这是已知边界。
 
 ### 4.3 transcript 请求改写
@@ -247,7 +249,7 @@ CLI 的约定是「后台输出只存活，exit 结果进 session log」。本�
    {"type":"tool_calls","tool_calls":[...]}
    ```
 4. 最终只发送 `[system?, user]`，并强制 `stream:false`（bridge 路径）；
-5. 删除所有原生 tool 字段。`tool_choice:"none"` 时不注入协议，按纯聊天处理。
+5. 删除所有原生 tool 字段。`tool_choice:"none"` 在 0.6.3 起不再进入这条路径；只有 `max_tokens < 256` 会走到这里。
 
 ### 4.4 响应还原
 
