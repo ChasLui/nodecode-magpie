@@ -470,6 +470,9 @@ rm -rf "$SB"
 - [x] npm 发布 `nodecode-magpie@0.6.0`（2026-11-10，GitHub Actions run `42764583561`；official registry `latest = 0.6.0`，tarball shasum `aa1a15d5a127e126087918a52145e39b8ebbd828`）
 - [x] GitHub Release `v0.6.0`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.6.0）
 - [x] 0.6.1 视觉缓存与重试本地验证（2026-11-10：`npm test` 75/75；gateway 3425 免费档对同一张 `/tmp/nc-look-cache.png` 连续两次 `(look ...)` 分别 12046ms（真实视觉调用）与 2313ms（缓存命中，结果同为 `CACHE-PROBE-777`）；把图片改写为 `CACHE-PROBE-888` 后再看分别为 3485ms（重新识别，未返回旧值）与 1291ms（再次命中））
+- [x] npm 发布 `nodecode-magpie@0.6.1`（2026-11-10，GitHub Actions run `42766521252`；official registry `latest = 0.6.1`，tarball shasum `96dd5d332eb91520ef12a349bc4234d372600085`）
+- [x] GitHub Release `v0.6.1`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.6.1）
+- [x] npm 0.6.1 真实 magpie 安装验证（2026-11-10：provider test free `1478 ms`、paid `1118 ms`；gateway 3425 免费档同一张 `/tmp/nc-look-cache.png` 两次 `(look ...)` 分别 30067ms（真实视觉调用）与 1117ms（缓存命中），结果一致）
 - [x] npm 0.6.0 真实 magpie 安装验证（2026-11-10：provider test free `1226 ms`、paid `1476 ms`；gateway 3425 免费档起 `(progn (sh "sleep 5") "bg-exit-npm060")` 后台 eval 200/2.4s，随后 `(magpie-eval-log)` 200/1.4s 同时返回换插件前的 `bg-exit-1045` 与新写入的 `bg-exit-npm060`）
 - [x] GitHub Actions 发版流水线 `.github/workflows/release.yml`（tag `v*` 触发测试 + `npm publish --provenance`）
 - [x] GitHub Release `v0.1.0`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.1.0）
