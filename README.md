@@ -64,7 +64,7 @@ magpie plugins add /abs/path/to/nodecode-magpie
 From npm (published package):
 
 ```sh
-magpie plugins add npm:nodecode-magpie@0.5.2
+magpie plugins add npm:nodecode-magpie@0.6.0
 ```
 
 If the configured npm mirror has not caught up yet, point Bun at the official
@@ -72,13 +72,13 @@ registry for this one command:
 
 ```sh
 NPM_CONFIG_REGISTRY=https://registry.npmjs.org \
-  magpie plugins add npm:nodecode-magpie@0.5.2
+  magpie plugins add npm:nodecode-magpie@0.6.0
 ```
 
 From a git tag:
 
 ```sh
-magpie plugins add github:ChasLui/nodecode-magpie#v0.5.2
+magpie plugins add github:ChasLui/nodecode-magpie#v0.6.0
 ```
 
 `magpie plugins add` restarts the plugin host. Local-path plugins are loaded in place,
@@ -201,6 +201,7 @@ CLI offers:
 (magpie-eval-await 3)              ; wait up to yield_ms
 (magpie-eval-await 3 :until-exit t)
 (magpie-eval-interrupt 3)          ; (magpie-eval-interrupt 3 :force t)
+(magpie-eval-log)                  ; exits from this and earlier images
 ```
 
 Each eval runs on its own Lisp thread, so a slow `(sh "sleep 20")` never blocks
@@ -213,8 +214,13 @@ per-session history file (`~/.nodecode-magpie/history/<hash>.jsonl`, override
 with `NODECODE_MAGPIE_HISTORY`) and replays them into a fresh image. Only
 definition heads (`defun`, `defvar`, `defparameter`, `defconstant`, `defmacro`,
 `defclass`, `defstruct`, `deftype`, `defpackage`, `define-*`, …) are replayed,
-so shell commands and other side effects never run twice. Values, `*` / `/`
-history and background results are still per-image and are not persisted.
+so shell commands and other side effects never run twice. Values and `*` / `/`
+history are still per-image.
+
+A background eval that finishes after its yield window appends its exit to a
+per-session log (`~/.nodecode-magpie/history/evals/<hash>.log`), and a rebuilt
+image reads it with `(magpie-eval-log)`. The log is bounded (past 128 KiB only
+the newest 64 KiB is kept).
 
 **`strings`.** A form that needs quotes, backslashes or newlines can ship them
 beside the form and read them with `($ "name")`:

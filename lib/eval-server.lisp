@@ -19,6 +19,11 @@
 ;;;; `(look ...)` inside the image is served by the plugin's vision model over a
 ;;;; second Unix socket, so a form can use the CLI's native look verb instead of
 ;;;; the (magpie-tool "look" ...) carrier.
+;;;;
+;;;; A form that is still running when its yield window expires is a background
+;;;; eval.  The NodeCode CLI keeps the exit result in the session log; this
+;;;; service appends it to a per-session log file so a later image can still
+;;;; read it with (magpie-eval-log).
 
 (progn
   (require :sb-bsd-sockets)
@@ -30,9 +35,14 @@
   ;; threads, so it must bind that special itself.
   (defvar *magpie-strings-symbol* (find-symbol "*EVAL-STRINGS*" :nodecode.evolved))
   (defvar *magpie-look-socket* __MAGPIE_LOOK_SOCKET__)
+  ;; A restart drops the image, so finished background evals are appended here
+  ;; for the next image to read.
+  (defvar *magpie-eval-log-path* __MAGPIE_EVAL_LOG__)
+  (defconstant +magpie-eval-log-max-bytes+ 131072)
+  (defconstant +magpie-eval-log-keep-bytes+ 65536)
 
   (defstruct (magpie-eval (:constructor %make-magpie-eval))
-    id thread stream value error-p done-p started-at)
+    id thread stream log-stream value error-p done-p background-p logged-p started-at)
 
   (defun magpie-json (pairs)
     "Build a JSON object from an alist of (key . value) pairs."
@@ -77,7 +87,8 @@
   (defun magpie-start (form-text &optional strings)
     (let* ((id (incf *magpie-seq*))
            (stream (make-string-output-stream))
-           (ev (%make-magpie-eval :id id :stream stream
+           (log-stream (make-string-output-stream))
+           (ev (%make-magpie-eval :id id :stream stream :log-stream log-stream
                                   :started-at (get-universal-time)))
            (bind-strings (and *magpie-strings-symbol*
                               (hash-table-p strings)
@@ -88,17 +99,19 @@
              (lambda ()
                (progv (if bind-strings (list *magpie-strings-symbol*) '())
                       (if bind-strings (list strings) '())
-                 (let ((*standard-output* stream)
-                       (*error-output* stream)
-                       (*trace-output* stream))
-                   (handler-case
-                       (multiple-value-bind (text err) (eval-string form-text)
-                         (setf (magpie-eval-value ev) (magpie-display-text text)
-                               (magpie-eval-error-p ev) (and err t)))
-                     (error (e)
-                       (setf (magpie-eval-value ev) (format nil "ERROR: ~a" e)
-                             (magpie-eval-error-p ev) t))))
-                 (setf (magpie-eval-done-p ev) t)))
+                 (let ((out (make-broadcast-stream stream log-stream)))
+                   (let ((*standard-output* out)
+                         (*error-output* out)
+                         (*trace-output* out))
+                     (handler-case
+                         (multiple-value-bind (text err) (eval-string form-text)
+                           (setf (magpie-eval-value ev) (magpie-display-text text)
+                                 (magpie-eval-error-p ev) (and err t)))
+                       (error (e)
+                         (setf (magpie-eval-value ev) (format nil "ERROR: ~a" e)
+                               (magpie-eval-error-p ev) t)))))
+                 (setf (magpie-eval-done-p ev) t)
+                 (magpie-log-eval ev)))
              :name (format nil "magpie-eval-~d" id)))
       ev))
 
@@ -124,6 +137,69 @@
                       text))
               (error () text)))
           text)))
+
+  (defun magpie-trim-eval-log ()
+    "Keep the log bounded: past MAX bytes, keep the tail from a record edge."
+    (let ((path *magpie-eval-log-path*))
+      (when (and (stringp path) (plusp (length path)) (probe-file path))
+        (handler-case
+            (let ((size (with-open-file (f path :element-type '(unsigned-byte 8))
+                          (file-length f))))
+              (when (> size +magpie-eval-log-max-bytes+)
+                (let* ((text (uiop:read-file-string path))
+                       (cut (max 0 (- (length text) +magpie-eval-log-keep-bytes+)))
+                       (start (or (search "--- eval " text :start2 cut) cut)))
+                  (with-open-file (f path :direction :output :if-exists :supersede
+                                          :if-does-not-exist :create)
+                    (write-string (subseq text start) f)))))
+          (error () nil)))))
+
+  (defun magpie-log-eval (ev)
+    "Append one finished background eval to the log a later image can read."
+    (when (and (stringp *magpie-eval-log-path*)
+               (plusp (length *magpie-eval-log-path*))
+               (magpie-eval-background-p ev)
+               (magpie-eval-done-p ev)
+               (not (magpie-eval-logged-p ev)))
+      (setf (magpie-eval-logged-p ev) t)
+      (let ((output (ignore-errors (get-output-stream-string (magpie-eval-log-stream ev)))))
+        (handler-case
+            (progn
+              (ensure-directories-exist *magpie-eval-log-path*)
+              (with-open-file (f *magpie-eval-log-path*
+                                 :direction :output :if-exists :append
+                                 :if-does-not-exist :create)
+                (format f "--- eval ~a (background) ---~%value: ~a~%"
+                        (magpie-eval-id ev) (or (magpie-eval-value ev) ""))
+                (when (and output (plusp (length output)))
+                  (format f "output:~%~a~%" output)))
+              (magpie-trim-eval-log))
+          (error () nil))))
+    t)
+
+  (defun magpie-log-records (text)
+    (let ((starts '())
+          (from 0))
+      (loop for pos = (search "--- eval " text :start2 from)
+            while pos do (push pos starts) (setf from (1+ pos)))
+      (loop for tail on (nreverse starts)
+            for start = (car tail)
+            for end = (or (cadr tail) (length text))
+            collect (string-trim '(#\Newline #\Space) (subseq text start end)))))
+
+  (defun magpie-eval-log (&optional (limit 20))
+    "Background eval exits from this and earlier images, oldest first."
+    (if (or (not (stringp *magpie-eval-log-path*))
+            (zerop (length *magpie-eval-log-path*))
+            (not (probe-file *magpie-eval-log-path*)))
+        "no background eval log yet"
+        (let ((records (ignore-errors
+                        (magpie-log-records (uiop:read-file-string *magpie-eval-log-path*)))))
+          (if (null records)
+              "no background eval log yet"
+              (let ((limit (max 1 (min 100 (or limit 20)))))
+                (format nil "~{~a~^~%~}"
+                        (last records (min limit (length records)))))))))
 
   (defun magpie-exited (ev)
     (magpie-json
@@ -151,6 +227,7 @@ Returns readable text, the same lane as every other eval answer."
           (format nil "eval ~a: unknown" id)
           (let ((output (magpie-drain ev))
                 (done (magpie-eval-done-p ev)))
+            (when done (magpie-log-eval ev))
             (with-output-to-string (out)
               (format out "eval ~a: ~a" (magpie-eval-id ev)
                       (if done "exited" "running"))
@@ -195,7 +272,15 @@ Returns readable text, the same lane as every other eval answer."
         (if (null rows)
             (write-string "no evals in this session" out)
             (dolist (row rows)
-              (format out "~a  ~a~%" (first row) (second row)))))))
+              (format out "~a  ~a~%" (first row) (second row))))
+        (let ((historical
+                (and (stringp *magpie-eval-log-path*)
+                     (probe-file *magpie-eval-log-path*)
+                     (ignore-errors
+                      (length (magpie-log-records
+                               (uiop:read-file-string *magpie-eval-log-path*)))))))
+          (when (and historical (plusp historical))
+            (format out "~a background exit~:p in (magpie-eval-log)~%" historical))))))
 
   ;; eval-string reads bare symbols in NODECODE.EVOLVED.  `nodecode trial`
   ;; installs the engine's own LOOK after this file is read, so swap it on every
@@ -205,11 +290,24 @@ Returns readable text, the same lane as every other eval answer."
       (when look-symbol
         (setf (symbol-function look-symbol) (symbol-function 'magpie-look)))))
 
+  (defun magpie-watch-background (ev ms)
+    "Mark EV as a background eval once MS passes with it still running."
+    (when (and (numberp ms) (plusp ms))
+      (sb-thread:make-thread
+       (lambda ()
+         (sleep (/ ms 1000.0))
+         (unless (magpie-eval-done-p ev)
+           (setf (magpie-eval-background-p ev) t))
+         (magpie-log-eval ev))
+       :name (format nil "magpie-watch-~d" (magpie-eval-id ev)))))
+
   (defun magpie-op-eval (request)
     (magpie-install-look)
     (let* ((form (gethash "form" request))
            (yield-ms (or (gethash "yield_time_ms" request) 10000))
+           (after-ms (gethash "background_after_ms" request))
            (ev (magpie-start form (gethash "strings" request))))
+      (magpie-watch-background ev after-ms)
       (if (magpie-park ev yield-ms)
           (magpie-exited ev)
           (magpie-running ev))))

@@ -6,7 +6,7 @@
 
 import test from "node:test"
 import assert from "node:assert/strict"
-import { existsSync, mkdtempSync, rmSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs"
 import { homedir, tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -33,12 +33,14 @@ function nodecodeBinary() {
 const binary = nodecodeBinary()
 const skip = binary ? false : "nodecode is not installed"
 
-test("makeServerForm injects the eval and look socket paths", () => {
-  const form = makeServerForm("/tmp/example/eval.sock", "/tmp/example/look.sock")
+test("makeServerForm injects the eval socket, look socket and eval log paths", () => {
+  const form = makeServerForm("/tmp/example/eval.sock", "/tmp/example/look.sock", "/tmp/example/evals.log")
   assert.doesNotMatch(form, /__MAGPIE_SOCKET__/)
   assert.doesNotMatch(form, /__MAGPIE_LOOK_SOCKET__/)
+  assert.doesNotMatch(form, /__MAGPIE_EVAL_LOG__/)
   assert.match(form, /"\/tmp\/example\/eval\.sock"/)
   assert.match(form, /"\/tmp\/example\/look\.sock"/)
+  assert.match(form, /"\/tmp\/example\/evals\.log"/)
 })
 
 test("definitions survive across eval calls", { skip }, async () => {
@@ -144,5 +146,39 @@ test("a form can call (look ...) and reach the vision handler", { skip }, async 
   assert.equal(seen.length, 1)
   assert.equal(seen[0].path, "/tmp/pic.png")
   assert.equal(seen[0].prompt, "read the card")
+  await closeEvalServers()
+})
+
+test("a finished background eval is logged for a later image", { skip }, async () => {
+  const env = { ...process.env, NODECODE_BIN: binary }
+  const sessionId = "log-probe"
+  const started = await runEvalForm('(progn (sleep 2) "log-probe-done")', {
+    env,
+    sessionId,
+    yieldMs: 300,
+  })
+  assert.match(started, /running in the background/)
+  const awaited = await runEvalForm("(magpie-eval-await 1 :until-exit t)", { env, sessionId })
+  assert.match(awaited, /log-probe-done/)
+  // A form that finished inside its yield window is not a background eval.
+  const fast = await runEvalForm('(list "fast-probe" 1)', { env, sessionId, yieldMs: 5_000 })
+  assert.match(fast, /fast-probe/)
+
+  const logDir = join(historyDir, "evals")
+  const logged = readdirSync(logDir)
+    .map((name) => join(logDir, name))
+    .filter((file) => readFileSync(file, "utf8").includes("log-probe-done"))
+  assert.equal(logged.length, 1)
+  const text = readFileSync(logged[0], "utf8")
+  assert.match(text, /--- eval 1 \(background\) ---/)
+  assert.match(text, /value: log-probe-done/)
+  assert.doesNotMatch(text, /fast-probe/)
+
+  // A rebuilt image still sees the exit through the log.
+  await closeEvalServers()
+  const recalled = await runEvalForm("(magpie-eval-log)", { env, sessionId })
+  assert.match(recalled, /log-probe-done/)
+  const listed = await runEvalForm("(magpie-eval-list)", { env, sessionId })
+  assert.match(listed, /magpie-eval-log/)
   await closeEvalServers()
 })

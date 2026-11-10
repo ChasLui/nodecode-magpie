@@ -2,7 +2,7 @@
 
 > 目标：在 magpie 中提供两个 NodeCode 供应商：`nodecode`（付费 key，完整工具、1M context）与 `nodecode-free`（免费 key，仅 `nodecode-cyber-v1`、256K context；用 NodeCode 原生 `eval` tool + 本地持久 Lisp image 释放与 CLI 相同的工具能力）。
 >
-> 版本：0.5.3（2026-11-10）。magpie 宿主契约按 0.1.3240 核对。
+> 版本：0.6.0（2026-11-10）。magpie 宿主契约按 0.1.3240 核对。
 
 ## 1. 结论：为什么必须写插件
 
@@ -51,7 +51,7 @@ https://api.nodecode.ai/v1/chat/completions
 
 | 维度 | `nodecode` | `nodecode-free` |
 | --- | --- | --- |
-| User-Agent | `nodecode-magpie/0.5.3`（诚实） | `nodecode_cli/<version> (<OS> <release>; <arch>) <TERM>` |
+| User-Agent | `nodecode-magpie/0.6.0`（诚实） | `nodecode_cli/<version> (<OS> <release>; <arch>) <TERM>` |
 | body（有 tools） | 原样转发 | 单 `eval` tool + Lisp 前缀 + 工具目录；本地执行 eval，client tools 走 `(magpie-tool ...)` |
 | body（无 tools） | 原样转发 | 单轮化；删除 tools 五件套；需要时注入 JSON 工具协议 |
 | 路由 | 由模型 API 决定 | 只允许 `/chat/completions`，否则本地抛错 |
@@ -212,6 +212,16 @@ eval 工具可带 `strings` 对象；服务端用 `progv` 在线程内绑定 `no
 - `makeFetch` 再兜底：免费档无条件把 `model` 设为 `nodecode-cyber-v1`；付费档只在 `model` 命中别名时改写，不改其他模型 id；
 - 免费 key 的 vendor 门禁仍然只认 `nodecode-cyber-v1`，别名不会以原名发到 vendor。
 
+#### 4.2.11 后台 eval 的结果日志
+
+CLI 的约定是「后台输出只存活，exit 结果进 session log」。本插件没有 scribe session，于是在 Lisp 服务内自己写一份 per-session 日志：
+
+- Node 为每个 scope 计算 `~/.nodecode-magpie/history/evals/<sha256(key)>.log`（`NODECODE_MAGPIE_HISTORY` 可改根目录），并把路径作为 `__MAGPIE_EVAL_LOG__` 注入服务源码；
+- `runWithYield` 在 eval 请求里带 `background_after_ms`；Lisp 起一个看门线程，超过该窗口仍在运行就标记为后台 eval；
+- 每个 form 的输出同时写进「可读流」和「日志流」：模型用 `(magpie-eval-status N)` 取走前者不会掏空日志；
+- eval 结束时（工作线程、看门线程或 `status` 查询任一路径）把 `--- eval N (background) --- / value / output` 追加到日志，幂等（`logged-p`）；
+- 日志超过 128 KiB 时只保留末尾 64 KiB（从记录边界切），新 image 用 `(magpie-eval-log [N])` 读取最后 N 条；`(magpie-eval-list)` 会在末尾提示日志里有 N 条历史退出。
+
 ### 4.3 transcript 请求改写
 
 `lib/free-bridge.mjs` 的 `rewriteFreeRequest(body)`：
@@ -320,7 +330,7 @@ export const FREE_UA =
 npm test
 ```
 
-69 个测试（`test/rewrite.test.mjs` + `test/free-bridge.test.mjs` + `test/free-eval.test.mjs` + `test/eval-server.test.mjs` + `test/eval-history.test.mjs` + `test/vision.test.mjs`）：免费/付费请求改写、UA、路由拒绝、模型元数据、key 查找、config 深合并、usage 映射、transcript 单轮化、JSON 工具协议解析、native `tool_calls` 还原、SSE 合成、eval tool 请求、`(magpie-tool ...)` 解析、direct eval 本地执行循环、client tool 还原、`look` 视觉桥（路径/大小/格式校验、data URI 请求、错误回喂）、原生图片输入桥（data/http/file、4 张上限、失败降级）、视觉模型回退、定义历史（只保留 definition 形式、回放后跨 image 可用）、无 tools 请求进 eval image 与小 `max_tokens` 回退、`tool_choice:none` 保持 transcript、`deepseek-v4.1-flash`/`deepseek-flash` 别名在两侧都映射到 `nodecode-cyber-v1`。
+70 个测试（`test/rewrite.test.mjs` + `test/free-bridge.test.mjs` + `test/free-eval.test.mjs` + `test/eval-server.test.mjs` + `test/eval-history.test.mjs` + `test/vision.test.mjs`）：免费/付费请求改写、UA、路由拒绝、模型元数据、key 查找、config 深合并、usage 映射、transcript 单轮化、JSON 工具协议解析、native `tool_calls` 还原、SSE 合成、eval tool 请求、`(magpie-tool ...)` 解析、direct eval 本地执行循环、client tool 还原、`look` 视觉桥（路径/大小/格式校验、data URI 请求、错误回喂）、原生图片输入桥（data/http/file、4 张上限、失败降级）、视觉模型回退、定义历史（只保留 definition 形式、回放后跨 image 可用）、无 tools 请求进 eval image 与小 `max_tokens` 回退、`tool_choice:none` 保持 transcript、`deepseek-v4.1-flash`/`deepseek-flash` 别名在两侧都映射到 `nodecode-cyber-v1`。
 
 ### 6.2 真实 smoke test
 
@@ -448,6 +458,8 @@ rm -rf "$SB"
 - [x] npm 发布 `nodecode-magpie@0.5.3`（2026-11-10，GitHub Actions run `42760736045`；official registry `latest = 0.5.3`，tarball shasum `99742dc84b3466fa94d512983162b94f70e05a14`）
 - [x] GitHub Release `v0.5.3`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.5.3）
 - [x] npm 0.5.3 真实 magpie 安装验证（2026-11-10：`nodecode-free (NodeCode Free, 3 models)` / `nodecode (NodeCode, 3 models)` 均 signed in；`nodecode-free/deepseek-v4.1-flash` 无 tools 请求 200/4.5s 并写出 `alias-053-ok`；`nodecode/deepseek-flash` 200/1.3s）
+- [x] 0.6.0 后台 eval 结果日志本地验证（2026-11-10：`npm test` 70/70；新增用例断言后台 eval 退出写入 `history/evals/<hash>.log`、快速 form 不入日志、重启 image 后 `(magpie-eval-log)` 仍能读到、`(magpie-eval-list)` 提示历史条数）
+- [x] 0.6.0 真实插件宿主重启验证（2026-11-10：gateway 3425 免费档 `yield_time_ms 500` 起 `(progn (sh "sleep 6") "bg-exit-1045")` 后台 eval，日志写入 `~/.nodecode-magpie/history/evals/63ee1f4a1e341de881aae69f583c96f2.log`；kill 插件宿主（pid 33255 → 38245）后新 image 里 `(magpie-eval-log)` 原文返回该记录，200/4.5s）
 - [x] GitHub Actions 发版流水线 `.github/workflows/release.yml`（tag `v*` 触发测试 + `npm publish --provenance`）
 - [x] GitHub Release `v0.1.0`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.1.0）
 - [x] GitHub Release `v0.1.1`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.1.1）
