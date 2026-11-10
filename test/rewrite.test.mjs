@@ -98,6 +98,33 @@ test("static model metadata reflects the free/paid limits", () => {
   assert.equal(free.capabilities.toolcall, true)
 })
 
+test("deepseek aliases resolve to the one NodeCode chat model", () => {
+  for (const free of [true, false]) {
+    const models = modelsFor(free)
+    for (const alias of ["deepseek-v4.1-flash", "deepseek-flash"]) {
+      assert.ok(models[alias], `${free ? "free" : "paid"} is missing ${alias}`)
+      assert.equal(models[alias].id, alias)
+      assert.equal(models[alias].api.id, "nodecode-cyber-v1")
+      assert.equal(models[alias].free, free)
+    }
+  }
+})
+
+test("paid and free lanes send deepseek aliases upstream as nodecode-cyber-v1", async () => {
+  for (const free of [true, false]) {
+    const seen = await capture(makeFetch({ free }), {
+      model: "deepseek-v4.1-flash",
+      messages: [{ role: "user", content: "hello" }],
+    })
+    assert.equal(JSON.parse(seen.body).model, "nodecode-cyber-v1", `${free ? "free" : "paid"} alias`)
+  }
+  const seen = await capture(makeFetch({ free: false }), {
+    model: "deepseek-flash",
+    messages: [{ role: "user", content: "hello" }],
+  })
+  assert.equal(JSON.parse(seen.body).model, "nodecode-cyber-v1")
+})
+
 test("key lookup uses the documented env/auth.json/free-key.txt order", () => {
   const home = mkdtempSync(join(tmpdir(), "nodecode-plugin-test-"))
   mkdirSync(join(home, ".nodecode"))

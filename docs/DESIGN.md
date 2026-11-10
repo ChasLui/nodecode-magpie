@@ -2,7 +2,7 @@
 
 > 目标：在 magpie 中提供两个 NodeCode 供应商：`nodecode`（付费 key，完整工具、1M context）与 `nodecode-free`（免费 key，仅 `nodecode-cyber-v1`、256K context；用 NodeCode 原生 `eval` tool + 本地持久 Lisp image 释放与 CLI 相同的工具能力）。
 >
-> 版本：0.5.2（2026-11-09）。magpie 宿主契约按 0.1.3240 核对。
+> 版本：0.5.3（2026-11-10）。magpie 宿主契约按 0.1.3240 核对。
 
 ## 1. 结论：为什么必须写插件
 
@@ -51,7 +51,7 @@ https://api.nodecode.ai/v1/chat/completions
 
 | 维度 | `nodecode` | `nodecode-free` |
 | --- | --- | --- |
-| User-Agent | `nodecode-magpie/0.5.2`（诚实） | `nodecode_cli/<version> (<OS> <release>; <arch>) <TERM>` |
+| User-Agent | `nodecode-magpie/0.5.3`（诚实） | `nodecode_cli/<version> (<OS> <release>; <arch>) <TERM>` |
 | body（有 tools） | 原样转发 | 单 `eval` tool + Lisp 前缀 + 工具目录；本地执行 eval，client tools 走 `(magpie-tool ...)` |
 | body（无 tools） | 原样转发 | 单轮化；删除 tools 五件套；需要时注入 JSON 工具协议 |
 | 路由 | 由模型 API 决定 | 只允许 `/chat/completions`，否则本地抛错 |
@@ -204,6 +204,14 @@ eval 工具可带 `strings` 对象；服务端用 `progv` 在线程内绑定 `no
 - `sh`/`edit`/`write-file` 等副作用形式不记录、不回放；值、`*`/`/` 历史与后台结果仍只在内存；
 - 历史上限 500 条，文件超过 1000 行时保留最后 1000 行。
 
+#### 4.2.10 模型别名
+
+付费与免费两个 provider 都声明三个模型 id：`nodecode-cyber-v1`、`deepseek-v4.1-flash`、`deepseek-flash`。后两个是**插件侧别名**：
+
+- 模型元数据里 `id` 是别名、`api.id` 固定为 `nodecode-cyber-v1`，所以 magpie 上游请求拿到的仍是 NodeCode 唯一对话模型；
+- `makeFetch` 再兜底：免费档无条件把 `model` 设为 `nodecode-cyber-v1`；付费档只在 `model` 命中别名时改写，不改其他模型 id；
+- 免费 key 的 vendor 门禁仍然只认 `nodecode-cyber-v1`，别名不会以原名发到 vendor。
+
 ### 4.3 transcript 请求改写
 
 `lib/free-bridge.mjs` 的 `rewriteFreeRequest(body)`：
@@ -312,7 +320,7 @@ export const FREE_UA =
 npm test
 ```
 
-67 个测试（`test/rewrite.test.mjs` + `test/free-bridge.test.mjs` + `test/free-eval.test.mjs` + `test/eval-server.test.mjs` + `test/eval-history.test.mjs` + `test/vision.test.mjs`）：免费/付费请求改写、UA、路由拒绝、模型元数据、key 查找、config 深合并、usage 映射、transcript 单轮化、JSON 工具协议解析、native `tool_calls` 还原、SSE 合成、eval tool 请求、`(magpie-tool ...)` 解析、direct eval 本地执行循环、client tool 还原、`look` 视觉桥（路径/大小/格式校验、data URI 请求、错误回喂）、原生图片输入桥（data/http/file、4 张上限、失败降级）、视觉模型回退、定义历史（只保留 definition 形式、回放后跨 image 可用）、无 tools 请求进 eval image 与小 `max_tokens` 回退、`tool_choice:none` 保持 transcript。
+69 个测试（`test/rewrite.test.mjs` + `test/free-bridge.test.mjs` + `test/free-eval.test.mjs` + `test/eval-server.test.mjs` + `test/eval-history.test.mjs` + `test/vision.test.mjs`）：免费/付费请求改写、UA、路由拒绝、模型元数据、key 查找、config 深合并、usage 映射、transcript 单轮化、JSON 工具协议解析、native `tool_calls` 还原、SSE 合成、eval tool 请求、`(magpie-tool ...)` 解析、direct eval 本地执行循环、client tool 还原、`look` 视觉桥（路径/大小/格式校验、data URI 请求、错误回喂）、原生图片输入桥（data/http/file、4 张上限、失败降级）、视觉模型回退、定义历史（只保留 definition 形式、回放后跨 image 可用）、无 tools 请求进 eval image 与小 `max_tokens` 回退、`tool_choice:none` 保持 transcript、`deepseek-v4.1-flash`/`deepseek-flash` 别名在两侧都映射到 `nodecode-cyber-v1`。
 
 ### 6.2 真实 smoke test
 

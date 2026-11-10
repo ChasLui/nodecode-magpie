@@ -7,6 +7,12 @@ Two magpie providers in one package:
 | `nodecode` | paid `sk-nc-…` | 1,048,576 | yes | `nodecode-cyber-v1` |
 | `nodecode-free` | free `sk-nc-…` | 262,144 | yes (bridged; `look` and image input via vision model) | `nodecode-cyber-v1` |
 
+Both providers also expose `deepseek-v4.1-flash` and `deepseek-flash` as
+selectable model ids. The plugin rewrites either alias to
+`nodecode-cyber-v1` before the request reaches the vendor, so an upstream
+agent that asks for a DeepSeek model lands on the one NodeCode chat model on
+both the paid and the free lane.
+
 Both talk to `https://api.nodecode.ai/v1` over the OpenAI Chat Completions wire. The free lane bridges magpie's tool calls through NodeCode's own `eval` tool and a local persistent Lisp image — see below.
 
 Design notes and magpie 0.1.3240 contract details: [docs/DESIGN.md](./docs/DESIGN.md).
@@ -292,6 +298,8 @@ preserved.
 ## Free-key limits (vendor docs / measured)
 
 - model: `nodecode-cyber-v1` only; another model is 403 `model_not_free`.
+  The `deepseek-v4.1-flash` / `deepseek-flash` ids are plugin-side aliases and
+  never reach the vendor under those names.
 - route: chat requests must be `POST /v1/chat/completions`; `/v1/responses`
   and `/v1/messages` are 403 `route`.
 - client: free key works only from Nodecode CLI; other clients get 403
