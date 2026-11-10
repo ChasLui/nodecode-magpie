@@ -475,6 +475,10 @@ rm -rf "$SB"
 - [x] GitHub Release `v0.6.0`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.6.0）
 - [x] 0.6.1 视觉缓存与重试本地验证（2026-11-10：`npm test` 75/75；gateway 3425 免费档对同一张 `/tmp/nc-look-cache.png` 连续两次 `(look ...)` 分别 12046ms（真实视觉调用）与 2313ms（缓存命中，结果同为 `CACHE-PROBE-777`）；把图片改写为 `CACHE-PROBE-888` 后再看分别为 3485ms（重新识别，未返回旧值）与 1291ms（再次命中））
 - [x] 0.6.2 eval id 跨重启可寻址本地验证（2026-11-10：`npm test` 75/75；真实插件宿主重启后 `(magpie-eval-status 7)` 返回 `eval 7: exited (from the log; this image did not run it)` + `value: bg-exit-062`，`(magpie-eval-status 999)` 返回 `unknown in this image` + `(magpie-eval-log)` 提示；重启后的第一个 eval 从 id 8 起，证明 id 由日志最大 id 续号）
+- [x] 0.6.3 `tool_choice:"none"` 本地验证（2026-11-10：`npm test` 75/75；gateway 3425 免费档 `tool_choice:"none"` + 声明 `read_file`，要求 `(sh "echo toolchoice-none-ok")` → `toolchoice-none-ok`、`finish_reason:"stop"`、无 `tool_calls`；模型请求 `read_file` 时收到 `ERROR: client tool ... is disabled by tool_choice:"none"` 并回答 `TOOL-DENIED`；stream 版本返回 `stream-none-ok`、0 个 tool delta、`[DONE]`；无 tools 版本返回 `none-notools-ok`）
+- [x] npm 发布 `nodecode-magpie@0.6.3`（2026-11-10，GitHub Actions run `42832856521`；official registry `latest = 0.6.3`，tarball shasum `5beb81ba141c7648fa1fb937f5fbe74e91b80da7`）
+- [x] npm 0.6.3 真实 magpie 安装验证（2026-11-10：`npm:nodecode-magpie@0.6.3` 安装成功；provider test free `1598 ms`、paid `1259 ms`；gateway 3425 `tool_choice:"none"` + 声明 `read_file` 返回 `toolchoice-none-ok`，模型请求 client 工具时返回 `TOOL-DENIED`，两者均 `finish_reason:"stop"` 且无 `tool_calls`）
+- [x] GitHub Release `v0.6.3`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.6.3）
 - [x] npm 发布 `nodecode-magpie@0.6.2`（2026-11-10，GitHub Actions run `42769150002`；official registry `latest = 0.6.2`，tarball shasum `f64da41f8a61a944670062a9ab7fe4485d4cb2fc`）
 - [x] GitHub Release `v0.6.2`（https://github.com/ChasLui/nodecode-magpie/releases/tag/v0.6.2）
 - [x] npm 0.6.2 真实 magpie 安装验证（2026-11-10：provider test free `1442 ms`、paid `1523 ms`；gateway 3425 `(magpie-eval-status 7)` 返回日志记录 `bg-exit-062`，`(magpie-eval-list)` 显示新 image 的 id 从 8 开始）
